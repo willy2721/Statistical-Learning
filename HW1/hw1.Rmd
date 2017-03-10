@@ -15,6 +15,7 @@ df1_test1y <- read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second 
 
 
 ```{r}
+### This function takes a train set and a test set, and returns a predition on the test set with parametered obtained from the train set ###
 gpredict <- function(df_train, df_test){
   ### Check for unique cases ###
   # Assume that df_test is not missing
@@ -85,5 +86,37 @@ print(out5$predict)
 mae1a <- mean(abs(df1_test1y[,1] - out5$predict))
 print(mae1a)
 
+```
+
+
+```{r}
+### This function takes mu(the original MLE estimator of mu), s(the original MLE estimator of sigma), n(the number of observations in the original dataset), and x(the new observation), and returns the new mu, sigma and n ###
+mle_update <- function(mu_old, s_old, n_old, x_new){
+  n_new <- n_old + 1
+  mu_new <- mu_old + (1 / n_new) * (x_new-mu_old)
+  s_new <- (n_old / n_new) * s_old + (n_old * (n_new ^ (-3))) * ((x_new - mu_old) %*% t(x_new - mu_old)) + 1 / n_new * ((x_new - mu_new) %*% t(x_new - mu_new))
+  
+  # Construct the required list
+  ret <- list(mu=mu_new, s=s_new, n=n_new)
+  return(ret)
+}
+
+```
+
+```{r}
+### Testing ###
+set.seed(1223) 
+nobs = 3 
+nfeature = 7 
+rawdata=matrix(runif(nobs*nfeature), nrow=nobs, ncol=nfeature)
+data1 = rawdata[1:(nobs-1),]
+#rawdata
+xn = rawdata[nobs,] 
+cov1 = cov(data1)*(nrow(data1)-1) / nrow(data1) 
+mu1 = colMeans(data1)
+out1 = mle_update(mu1, cov1, nrow(data1), xn)
+print(out1$mu[1:3])
+print(out1$s[1:3,1:3])
+print(out1$n)
 ```
 
