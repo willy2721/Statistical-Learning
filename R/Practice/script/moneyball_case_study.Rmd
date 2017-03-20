@@ -1,0 +1,84 @@
+---
+title: "moneyball"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+baseball <- read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/The Analytics Edge/data/baseball.csv")
+```
+
+# Find out whether run difference has anything to do with wins
+```{r}
+# Select years before 2002
+moneyball <- filter(baseball, Year < 2002)
+# Create column "RD" for the run difference
+moneyball$RD <- moneyball$RS - moneyball$RA
+#str(moneyball)
+```
+
+```{r}
+# Create a scatter plot for run difference and number of wins
+ggplot(moneyball, aes(x=RD,y=W)) + geom_point() + geom_smooth(method=lm) + labs(title="Relationship between run difference and wins", x="Run difference", y="Number of wins")
+```
+
+```{r}
+# Create linear model for run difference and wins
+WinsReg <- lm(W~RD, data=moneyball)
+summary(WinsReg)
+```
+
+```{r}
+# Predict the number of wins for a certain run difference value
+predict(WinsReg, data.frame(RD <- c(99)))
+```
+
+# How does a team score more runs? (On-Base Percentage and Slugging Percentage?)
+
+
+```{r}
+# Build a multiple linear regression model to predict runs scored with OBP, SLG and BA
+RunsReg <- lm(RS ~ OBP + SLG + BA, data = moneyball)
+summary(RunsReg)
+# Try removing batting average
+RunsReg <- lm(RS ~ OBP + SLG, data = moneyball)
+summary(RunsReg)
+# Predict the number of runs 
+predict(RunsReg, data.frame(OBP <- c(0.311), SLG <- c(0.405)))
+# Predict number of runs allowed for opponent
+OpRunsReg <- lm(RA ~ OOBP + OSLG, data = moneyball)
+predict(OpRunsReg, data.frame(OOBP <- c(0.297), OSLG <- c(0.370)))
+```
+
+
+```{r}
+# Choosing players based on OBG, SLG and Salary
+Eric <- predict(RunsReg, data.frame(OBP <- c(0.338), SLG <- c(0.540)))
+Eric
+Jeremy <- predict(RunsReg, data.frame(OBP <- c(0.391), SLG <- c(0.450)))
+Jeremy
+Frank <- predict(RunsReg, data.frame(OBP <- c(0.369), SLG <- c(0.374)))
+Frank
+Greg <- predict(RunsReg, data.frame(OBP <- c(0.313), SLG <- c(0.447)))
+Greg
+Carlos <- predict(RunsReg, data.frame(OBP <- c(0.361), SLG <- c(0.500)))
+Carlos
+```
+
+# Predicting playoff wins
+```{r}
+teamRank <- c(1,2,3,3,4,4,4,4,5,5)
+wins2012 <- c(94,88,95,88,93,94,98,97,93,94)
+cor(teamRank,wins2012)
+wins2013 <- c(97,97,92,93,92,96,94,96,92,90)
+cor(teamRank,wins2013)
+```
+
+
+
+
+

@@ -1,0 +1,155 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+```
+
+
+# Create a birth dataframe
+```{r}
+birth <- tbl_df(read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Practice/data/birth2006.csv", row.names = 1))
+birth
+```
+
+# Create a new birth_count dataframe to record the number of births for each day
+```{r}
+birth_count <- birth %>% dplyr::count(DOB_WK)
+birth_count
+```
+
+# Create a factor for the days in a week and add it to "birth_count"
+```{r}
+days_of_week <- c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday")
+days_of_week <- factor(days_of_week, levels = c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"))
+birth_count$day <- days_of_week
+```
+
+# Print birth_count
+```{r}
+birth_count
+```
+
+# Make a bar plot with the days for the x axis and number of births for the y axis. 
+```{r}
+birth_barplot <- ggplot(data=birth_count, aes(x=day,y=n, fill=day)) + geom_bar(stat="identity") 
+```
+
+# Rename the x and y axes, name the barplot, and reorder/rename the legend
+```{r}
+birth_barplot <- birth_barplot + xlab("Day of week") + ylab("Number of births") + ggtitle("Bar plot for number of births corresponding to different days") + scale_fill_discrete(breaks=c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"),name="Days of week")
+```
+
+# Print birth_barplot
+```{r}
+birth_barplot
+```
+
+# Create a new dataframe dmeth_count to record the number of births for different methods
+```{r}
+#head(birth)
+dmeth_count <- dplyr::count(birth,DMETH_REC)
+dmeth_count
+```
+
+# Create a pie chart to show the percentage of each birth method 
+```{r}
+birth_pie <- ggplot(transform(transform(dmeth_count, n=n/sum(n)), labPos=cumsum(n)-n/2),aes(x="", y = n, fill=DMETH_REC)) + geom_bar(width = 1, stat = "identity") + coord_polar("y", start = 0) + labs(title="Birth method pie chart") + geom_text(aes(y=labPos, label=scales::percent(n))) + theme(axis.text = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(), panel.grid  = element_blank()) + scale_fill_manual(name="Birth Methods", values=c("#3366CC","#dc3912","#ff9900"))
+birth_pie
+```
+
+# It can be shown by the chart above that unlike the question states, vaginal births are actually more common
+
+# We then draw a bar plot for both vaginal and C-section births corresponding to the days of a week
+
+# Vaginal births
+```{r}
+vag <- filter(birth, DMETH_REC == "Vaginal")
+vag_birth_count <- vag %>% dplyr::count(DOB_WK)
+vag_birth_count$day <- days_of_week
+vag_birth_barplot <- ggplot(data=vag_birth_count, aes(x=day,y=n, fill=day)) + geom_bar(stat="identity") + xlab("Day of week") + ylab("Number of births") + ggtitle("Bar plot for number of vaginal births corresponding to different days") + scale_fill_discrete(breaks=c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"),name="Days of week")
+print(vag_birth_barplot)
+
+```
+# C-sec births
+```{r}
+c_sec <- filter(birth, DMETH_REC == "C-section")
+c_sec_birth_count <- c_sec %>% dplyr::count(DOB_WK)
+c_sec_birth_count
+c_sec_birth_count$day <- days_of_week
+c_sec_birth_barplot <- ggplot(data=c_sec_birth_count, aes(x=day,y=n, fill=day)) + geom_bar(stat="identity") + xlab("Day of week") + ylab("Number of births") + ggtitle("Bar plot for number of C-section births corresponding to different days") + scale_fill_discrete(breaks=c("Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"),name="Days of week")
+print(c_sec_birth_barplot)
+```
+# We find out that for both vaginal and c-sec births, there are more babies born on weekdays on average than on weekends. For C-section births, the difference between number of births on weekdays and weekends is even more significant. This might be because there are usually fewer gynecologists working on weekends than on weekdays.
+
+
+# Create a new dataframe with only the three varibles and no empty values, and rename the column titles
+```{r}
+dm_dp_db <- select(birth, method_of_birth = DMETH_REC, number_of_babies = DPLURAL, baby_weight = DBWT) %>% na.omit()
+```
+# Rename the factor levels for a better looking graph
+```{r}
+dm_dp_db <- mutate(dm_dp_db, number_of_babies = revalue(number_of_babies, c("1 Single" = "1", "2 Twin" = "2","3 Triplet" = "3","4 Quadruplet" = "4","5 Quintuplet or higher" = "5")))
+```
+# To successfully plot a regression line, change the factor levels into numeric values
+```{r}
+num_dm_dp_db <- dm_dp_db
+num_dm_dp_db$number_of_babies <- as.numeric(as.character(num_dm_dp_db$number_of_babies))
+num_dm_dp_db
+```
+# Draw the scatter plot
+```{r}
+ggplot(num_dm_dp_db, aes(x = number_of_babies, y = baby_weight, color = method_of_birth)) + geom_point() + geom_smooth(method=lm, se=FALSE) + labs(title="Relationship between number of babies and baby weight by birth method", x="Number of babies", y="Baby Weight") + facet_wrap(~method_of_birth, ncol=3)
+
+```
+# The scatter plot and regression line above shows that no matter the method of birth, there is a inverse relationship (strong negative correlation) between the number of babies and the weight of the baby/babies. In other words, singles usually weigh more than twins, followed by triplets, quadruplets ... etc.
+
+# We might also want to find out whether there is a relationship between number of babies and the method of birth, or a relationship between method of birth and baby weight
+
+# Relationship between number of babies and method of birth
+
+# Create a new dataframe by selecting and using the two variables
+```{r}
+dm_dp <- select(num_dm_dp_db, method_of_birth, number_of_babies)
+```
+# Count the number of vaginal and C-section births for different number of babies, then calculate the percentage
+```{r}
+
+dm_dp <- dm_dp %>% group_by(number_of_babies, method_of_birth) %>% dplyr::summarise(n = n()) %>% mutate(freq = n / sum(n))
+dm_dp
+```
+# Draw the stacked barplot
+```{r}
+ggplot(dm_dp, aes(x = number_of_babies, y = freq, fill = method_of_birth)) + geom_bar(stat="identity") + labs(title="Relationship between number of babies and method of birth", x="Number of babies", y="Percentage of methods")
+```
+# It is possible from the stacked bar plot above that the more number of babies born, the higher chance it is a C-section birth
+
+
+
+# Relationship between method of birth and baby weight
+
+# Rename the factors for a better-looking graph
+```{r}
+short_dm_dp_db <- mutate(dm_dp_db, method_of_birth = plyr::revalue(method_of_birth, c("Vaginal" = "V", "C-section" = "C","Unknown" = "U")))
+```
+# Plot the graph
+```{r}
+ggplot(short_dm_dp_db, aes(x = method_of_birth, y = baby_weight, color = number_of_babies)) + geom_point() + geom_smooth(method=lm, se=FALSE) + labs(title="Relationship between method of birth and baby weight by number of babies", x="Method of birth", y="Baby Weight") + facet_wrap(~number_of_babies, ncol=5) + stat_summary(fun.y = "mean", colour = "red", size = 2, geom = "point")
+```
+# The red dot on the graph above represents the mean body weight for each birth method. We find no evidence that there exists a relationship between method of birth and bodyweight
+
+
+# Create a new dataframe with only the two varibles and no empty values, and rename the column titles
+```{r}
+gain_wt <- select(birth, weight_gain = WTGAIN, birth_weight = DBWT) %>% na.omit()
+```
+
+# Draw the scatter plot
+```{r}
+ggplot(gain_wt, aes(x=birth_weight, y=weight_gain)) + geom_point() + geom_smooth(method=lm) + labs(title="Relationship between baby weight gain and birth weight", x="Weight gained", y="Birth weight")
+```
+# There is a positive correlation) between the weight gain and birth weight of babies. That is, the more weight gained during pregnancy, the higher the birth weight

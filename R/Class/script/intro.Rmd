@@ -1,0 +1,60 @@
+---
+title: "Statistical Learning lab"
+output: html_notebook
+---
+ 
+
+```{r}
+gss1 <- read.csv("./data/GSS2002_sub1.csv")
+head(gss1)
+```
+```{r}
+rnorm(3)
+a=matrix(rnorm(1000000), nrow=1000, ncol=1000)
+a[1:5,1:5]
+system.time(b<-solve(a))
+x1 <- 1:15
+x1
+cat("x1 sequence", x1, "\n")
+x2 <- 523L
+typeof(x2)
+attributes(a)
+dim(a)
+x <- 0:6
+as.logical(x)
+m <- matrix(nrow = 3, ncol = 2)
+x <- 1:3
+y <- 10:12
+cbind(x,y)
+
+
+```
+
+```{r}
+library(XLConnect)
+library(dplyr) 
+head(gss1)
+
+```
+
+```{r}
+mytmean <- function(v){
+  v <- sort(v)
+  top <- round(0.1*length(v))
+  bottom <- length(v) - top
+  return (mean(v[top:bottom]))
+}
+```
+
+```{r}
+test <- c(1:1000)
+#test[0: (0.1 *length(test))]
+mytmean(test)
+```
+
+
+
+
+
+
+
