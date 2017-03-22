@@ -9,7 +9,7 @@ library(ggplot2)
 ```
 
 ```{r}
-baseball <- read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/The Analytics Edge/data/baseball.csv")
+baseball <- read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Practice/data/baseball.csv")
 ```
 
 # Find out whether run difference has anything to do with wins
