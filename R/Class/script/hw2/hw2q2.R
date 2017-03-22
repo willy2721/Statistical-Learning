@@ -65,7 +65,6 @@ gen_utagmat <- function(utagvec,y){
     else{
       opmatrix <- cbind(opmatrix,data.frame(selpred))  
     }
-    
   }
   
   # Name the output matrix
