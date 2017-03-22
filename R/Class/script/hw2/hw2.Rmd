@@ -3,10 +3,25 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-```{r}
 
+```{r}
 gen_utagmat <- function(utagvec,y){
-    
+
+# Define a function to calculate t-stats
+reg_tvalue = function(y, x) {
+  y=matrix(y, ncol=1)
+  xmat=matrix(1, ncol=2, nrow=length(y))
+  xmat[,2] = x
+  bhead = solve(t(xmat)%*%xmat, t(xmat)%*%y)
+  yhead = xmat %*% bhead
+  e1 = y - yhead
+  var1 = sum(e1 * e1) / (length(e1)-2)
+  sigma2 = solve(t(xmat)%*%xmat) * var1
+  t1=bhead[2]/sqrt(sigma2[2,2])
+  return(t1)
+}  
+  
+  
 # Create a tag vector containing the user_tags column split by commas
 utagvec <- strsplit(utagvec, ",")
   
@@ -26,9 +41,6 @@ fillen <- length(filtags)
 filname <- names(filtags)
 alltags <- structure(rep(NA, fillen), names=filname)
 
-# Select the column containing the target values
-tar <- rtb1_train$paying_price
-
 # Compute and store the t-stats for each tag
 for(iter in 1:fillen){
   # Get feature name
@@ -37,8 +49,9 @@ for(iter in 1:fillen){
   pred <- sapply(utagvec, function(taglist) as.numeric(is.element(feat, unlist(taglist))))
   # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
   # Check names(summary(lm(tar~pred))) to find the corresponding entry
-  alltags[iter] <- summary(lm(tar~pred))$coefficient[2,3]
-  }
+  #alltags[iter] <- summary(lm(y~pred))$coefficient[2, "t value"]
+  alltags[iter] <- reg_tvalue(y,pred)
+}
 
 # Filter out the tags with absolute value of t-stat less than 1, and order the vector
 seltags <- alltags[abs(alltags) >= 1]
@@ -51,17 +64,19 @@ for(seliter in 1:sellen){
   # Get feature name
   selfeat <- selname[seliter]
   # Store the numerical value of whether the feature exists in the tag vector
-  selpred <- sapply(utagvec, function(taglist) as.numeric(is.element(selfeat, unlist(taglist))))
+  selpred <- sapply(utagvec, function(tag) as.numeric(is.element(selfeat, unlist(tag))))
   # Combine the columns in to one dataframe 
   if(seliter == 1){
     opmatrix <- data.frame(selpred)
   }
-  opmatrix <- cbind(opmatrix,data.frame(selpred))
+  else{
+    opmatrix <- cbind(opmatrix,data.frame(selpred))  
+  }
+  
 }
 
 # Name the output matrix
 colnames(opmatrix) <- paste("user",selname, sep = "_")
-opmatrix <- opmatrix[,-ncol(opmatrix)]
 opmatrix <- as.matrix(cbind(constant=1,opmatrix))
 
 # Return the required the matrix
@@ -70,17 +85,18 @@ return(opmatrix)
 
 ```
 
+
+
 ```{r}
 ###　Testing ###
-load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/rtb1_train.rdata")
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
 rtb1_train <- rtb1_train[1:300,]
-
 umat1 = gen_utagmat(rtb1_train$user_tags, rtb1_train$paying_price)
 head(umat1)
 
-#y = rtb1_train$paying_price
-#w = solve(t(umat1) %*% umat1, t(umat1) %*% y)
-#print(w)
+y = rtb1_train$paying_price
+w = solve(t(umat1) %*% umat1, t(umat1) %*% y)
+print(w)
 
 
 ```
