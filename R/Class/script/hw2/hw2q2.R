@@ -1,20 +1,5 @@
 gen_utagmat <- function(utagvec,y){
   
-  # Define a function to calculate t-stats
-  reg_tvalue = function(y, x) {
-    y=matrix(y, ncol=1)
-    xmat=matrix(1, ncol=2, nrow=length(y))
-    xmat[,2] = x
-    bhead = solve(t(xmat)%*%xmat, t(xmat)%*%y)
-    yhead = xmat %*% bhead
-    e1 = y - yhead
-    var1 = sum(e1 * e1) / (length(e1)-2)
-    sigma2 = solve(t(xmat)%*%xmat) * var1
-    t1=bhead[2]/sqrt(sigma2[2,2])
-    return(t1)
-  }  
-  
-  
   # Create a tag vector containing the user_tags column split by commas
   utagvec <- strsplit(utagvec, ",")
   
@@ -26,6 +11,9 @@ gen_utagmat <- function(utagvec,y){
   
   # Filter out the tags that occur less than 5 times
   filtags <- sortags[sortags >= 5]
+  if(length(filtags) == 0){
+    return(NULL)
+  }
   
   ### Computing t-value for each tag ###
   
@@ -39,11 +27,11 @@ gen_utagmat <- function(utagvec,y){
     # Get feature name
     feat <- filname[iter]
     # Store the numerical value of whether the feature exists in the tag vector
-    pred <- sapply(utagvec, function(taglist) as.numeric(is.element(feat, unlist(taglist))))
+    pred <- as.matrix(sapply(utagvec, function(taglist) as.numeric(is.element(feat, unlist(taglist)))))
     # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
     # Check names(summary(lm(tar~pred))) to find the corresponding entry
-    #alltags[iter] <- summary(lm(y~pred))$coefficient[2, "t value"]
-    alltags[iter] <- reg_tvalue(y,pred)
+    alltags[iter] <- summary(lm(y~pred))$coefficient[length(summary(lm(y~pred))$coefficient[, "t value"]), "t value"]
+    #alltags[iter] <- reg_tvalue(y,pred)
   }
   
   # Filter out the tags with absolute value of t-stat less than 1, and order the vector
@@ -65,6 +53,7 @@ gen_utagmat <- function(utagvec,y){
     else{
       opmatrix <- cbind(opmatrix,data.frame(selpred))  
     }
+    
   }
   
   # Name the output matrix

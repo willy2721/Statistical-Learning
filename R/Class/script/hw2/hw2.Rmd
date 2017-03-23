@@ -6,22 +6,21 @@ output: html_notebook
 
 ```{r}
 ### Q2 ###
-
 gen_utagmat <- function(utagvec,y){
 
 # Define a function to calculate t-stats
-reg_tvalue = function(y, x) {
-  y=matrix(y, ncol=1)
-  xmat=matrix(1, ncol=2, nrow=length(y))
-  xmat[,2] = x
-  bhead = solve(t(xmat)%*%xmat, t(xmat)%*%y)
-  yhead = xmat %*% bhead
-  e1 = y - yhead
-  var1 = sum(e1 * e1) / (length(e1)-2)
-  sigma2 = solve(t(xmat)%*%xmat) * var1
-  t1=bhead[2]/sqrt(sigma2[2,2])
-  return(t1)
-}  
+#reg_tvalue = function(y, x) {
+#  y=matrix(y, ncol=1)
+#  xmat=matrix(1, ncol=2, nrow=length(y))
+#  xmat[,2] = x
+#  bhead = solve(t(xmat)%*%xmat, t(xmat)%*%y)
+#  yhead = xmat %*% bhead
+#  e1 = y - yhead
+#  var1 = sum(e1 * e1) / (length(e1)-2)
+#  sigma2 = solve(t(xmat)%*%xmat) * var1
+#  t1=bhead[2]/sqrt(sigma2[2,2])
+#  return(t1)
+#}  
   
   
 # Create a tag vector containing the user_tags column split by commas
@@ -32,6 +31,7 @@ vec<-unlist(utagvec)
 
 # Sort the tag vector by order 
 sortags <- sort(table(vec), decreasing=TRUE)
+#print(sortags)
 
 # Filter out the tags that occur less than 5 times
 filtags <- sortags[sortags >= 5]
@@ -51,8 +51,9 @@ for(iter in 1:fillen){
   pred <- sapply(utagvec, function(taglist) as.numeric(is.element(feat, unlist(taglist))))
   # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
   # Check names(summary(lm(tar~pred))) to find the corresponding entry
-  #alltags[iter] <- summary(lm(y~pred))$coefficient[2, "t value"]
-  alltags[iter] <- reg_tvalue(y,pred)
+  alltags[iter] <- summary(lm(y~pred))$coefficient[length(summary(lm(y~pred))$coefficient[, "t value"]), "t value"]
+  #alltags[iter] <- reg_tvalue(y,pred)
+  
 }
 
 # Filter out the tags with absolute value of t-stat less than 1, and order the vector
@@ -92,10 +93,9 @@ return(opmatrix)
 ```{r}
 ###　Testing ###
 load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
-rtb1_train <- rtb1_train[1:300,]
+rtb1_train <- rtb1_train[1:100,]
 umat1 = gen_utagmat(rtb1_train$user_tags, rtb1_train$paying_price)
 head(umat1)
-
 y = rtb1_train$paying_price
 w = solve(t(umat1) %*% umat1, t(umat1) %*% y)
 print(w)
@@ -107,36 +107,28 @@ print(w)
 ### Q3
 gen_uagentmat <- function(uagentvec, y){
   
-  # Define a function to calculate t-stats
-  reg_tvalue = function(y, x) {
-    y=matrix(y, ncol=1)
-    xmat=matrix(1, ncol=2, nrow=length(y))
-    xmat[,2] = x
-    bhead = solve(t(xmat)%*%xmat, t(xmat)%*%y)
-    yhead = xmat %*% bhead
-    e1 = y - yhead
-    var1 = sum(e1 * e1) / (length(e1)-2)
-    sigma2 = solve(t(xmat)%*%xmat) * var1
-    t1=bhead[2]/sqrt(sigma2[2,2])
-    return(t1)
-  }  
-  
   # Define regular expression pattern
   pattern <- "([A-Za-z][A-Za-z0-9]{1,})"
   
   uagentvec <- sapply(uagentvec, function(x) regmatches(x, gregexpr(pattern, x)))
   uagentvec <- lapply(uagentvec, unique)
+  ###print(head(uagentvec))
   
   # Unlist the vector
   agentvec <- unlist(uagentvec)
-
+  ###print(head(agentvec))
+  
   # Sort the agent vector by order 
   soragent <- sort(table(agentvec), decreasing=TRUE)
+  ###print(str(soragent))
   
   # Filter out the agents that occur less than 5 times
   filagent <- soragent[soragent >= 5]
-  
-  #print(filagent)
+  ###print(str(filagent))
+    if(length(filagent) == 0){
+    return(NULL)
+  }
+
   ### Computing t-value for each agent ###
 
   # Create a named vector with the same length as the agent vector and set all values to NA
@@ -150,20 +142,22 @@ gen_uagentmat <- function(uagentvec, y){
     agentfeat <- agentname[iter]
     # Store the numerical value of whether the feature exists in the tag vector
     agentpred <- sapply(uagentvec, function(agentlist) as.numeric(is.element(agentfeat, unlist(agentlist))))
+    #if(iter == 1){
+    #  print(str(agentpred))
+    #}
     # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
     # Check names(summary(lm(tar~pred))) to find the corresponding entry
-    #alltags[iter] <- summary(lm(y~pred))$coefficient[2, "t value"]
-    allagents[iter] <- reg_tvalue(y,agentpred)
+    allagents[iter] <- summary(lm(y~agentpred))$coefficient[length(summary(lm(y~agentpred))$coefficient[, "t value"]), "t value"]
   }
-  print(allagents)
+  ###print(allagents)
   
   # Filter out the tags with absolute value of t-stat less than 1, and order the vector
   selagents <- allagents[abs(allagents) >= 1]
   selagents <- sort(abs(selagents), decreasing = TRUE)
-  #print(selagents)
+  ###print(selagents)
   selagentlen <- length(selagents)
   selagentname <- names(selagents)
-  #print(selagentname)
+  ###print(selagentname)
 
   # Create output matrix
   for(seliter in 1:selagentlen){
@@ -179,46 +173,24 @@ gen_uagentmat <- function(uagentvec, y){
       opmatrix <- cbind(opmatrix,data.frame(selpred))  
     }
   }
-  #print(opmatrix[21:30,])
   
+  # Name the output matrix
+  colnames(opmatrix) <- paste("agent",selagentname, sep = "_")
+  opmatrix <- as.matrix(cbind(constant=1,opmatrix))
   
-#  print(allagents)
-  
-  
-  
-  
-  
-  #print(filagent)
-  #print(head(uagentvec))
-  #print(str(uagentvec))
-  #print(vec)
-  # Sort the vector by order 
-  #sortags <- sort(table(vec), decreasing=TRUE)
-  
-  # Filter out the tags that occur less than 5 times
-  #filtags <- sortags[sortags >= 5]
-  
-  
-  #sapply()
-  
-  # Define function to match regex
-  #list2=regmatches(utagstr, gregexpr(pattern, utagstr))
-  # Keep only unique words in each row.
-  #list2=lapply(list2, unique)
-  #print(test)
-  
-  
-  
+  return(opmatrix)
 }
-
-
 
 ```
 
 ```{r}
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
 rtb1_train = rtb1_train[1:1500,]
 y = rtb1_train$paying_price
 umat1 = gen_uagentmat(rtb1_train$user_agent,y)
+print(head(umat1))
+#print(head(sort(colSums(umat1), decreasing=TRUE), n=10))
+
 ```
 
 
