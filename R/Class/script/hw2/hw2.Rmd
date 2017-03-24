@@ -33,8 +33,14 @@ vec<-unlist(utagvec)
 sortags <- sort(table(vec), decreasing=TRUE)
 #print(sortags)
 
+print(utagvec)
 # Filter out the tags that occur less than 5 times
 filtags <- sortags[sortags >= 5]
+
+# Return a column containing 1's if no tags occus less than 5 times
+if(length(filtags) == 0){
+    return(as.matrix(rep(1,length(utagvec))))
+}
 
 ### Computing t-value for each tag ###
 
@@ -93,7 +99,7 @@ return(opmatrix)
 ```{r}
 ###　Testing ###
 load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
-rtb1_train <- rtb1_train[1:100,]
+rtb1_train <- rtb1_train[1:4,]
 umat1 = gen_utagmat(rtb1_train$user_tags, rtb1_train$paying_price)
 head(umat1)
 y = rtb1_train$paying_price
