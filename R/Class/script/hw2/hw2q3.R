@@ -13,11 +13,9 @@ gen_uagentmat <- function(uagentvec, y){
   
   # Sort the agent vector by order 
   soragent <- sort(table(agentvec), decreasing=TRUE)
+  ###print(soragent)
   
   # Select the agents that occur more than 10 times and less than or equal to floor(0.5N) times
-  ###print(length(uagentvec))
-  
-  
   filagent <- soragent[soragent >= 10]
   filagent <- filagent[filagent <= floor(0.5 * length(uagentvec))] 
   ###print(filagent)
@@ -46,17 +44,34 @@ gen_uagentmat <- function(uagentvec, y){
     # Check names(summary(lm(tar~pred))) to find the corresponding entry
     allagents[iter] <- summary(lm(y~agentpred))$coefficient[length(summary(lm(y~agentpred))$coefficient[, "t value"]), "t value"]
   }
+  
+  # Try sorting by reverse alphabetical order before filtering
+  order <- sort(names(allagents), decreasing = TRUE)
+  allagents <- allagents[order]
   ###print(allagents)
   
   # Filter out the tags with absolute value of t-stat less than 1, and order the vector
   selagents <- allagents[abs(allagents) >= 1]
   selagents <- sort(abs(selagents), decreasing = TRUE)
   selagentlen <- length(selagents)
+  ###print(selagents)
   
   # Return a column containing 1's if no agents have an absolute t value larger or equal to 1
   if(selagentlen == 0){
     return(as.matrix(rep(1,length(uagentvec))))
   }
+  
+  # Try reordering members with the same t-value
+  #for(iter in 1:(selagentlen-1)){
+  #  if(selagents[iter] == selagents[iter + 1]){
+  #    tmp <- names(selagents)[iter]
+  #    names(selagents)[iter] <- names(selagents)[iter + 1]
+  #    names(selagents)[iter + 1] <- tmp
+  #    iter <- iter-1
+  #  }  
+  #}
+  ###print(selagents)
+  
   selagentname <- names(selagents)
   ###print(selagentname)
   
