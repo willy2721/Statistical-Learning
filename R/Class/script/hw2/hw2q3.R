@@ -1,35 +1,30 @@
 gen_uagentmat <- function(uagentvec, y){
   
-  # Define a function to calculate t-stats
-  reg_tvalue = function(y, x) {
-    y=matrix(y, ncol=1)
-    xmat=matrix(1, ncol=2, nrow=length(y))
-    xmat[,2] = x
-    bhead = solve(t(xmat)%*%xmat, t(xmat)%*%y)
-    yhead = xmat %*% bhead
-    e1 = y - yhead
-    var1 = sum(e1 * e1) / (length(e1)-2)
-    sigma2 = solve(t(xmat)%*%xmat) * var1
-    t1=bhead[2]/sqrt(sigma2[2,2])
-    return(t1)
-  }  
-  
   # Define regular expression pattern
   pattern <- "([A-Za-z][A-Za-z0-9]{1,})"
   
   uagentvec <- sapply(uagentvec, function(x) regmatches(x, gregexpr(pattern, x)))
   uagentvec <- lapply(uagentvec, unique)
+  ###print(head(uagentvec))
   
   # Unlist the vector
   agentvec <- unlist(uagentvec)
+  ###print(head(agentvec))
   
   # Sort the agent vector by order 
   soragent <- sort(table(agentvec), decreasing=TRUE)
   
-  # Filter out the agents that occur less than 5 times
-  filagent <- soragent[soragent >= 5]
+  # Select the agents that occur more than 10 times and less than or equal to floor(0.5N) times
+  ###print(length(uagentvec))
+  
+  
+  filagent <- soragent[soragent >= 10]
+  filagent <- filagent[filagent <= floor(0.5 * length(uagentvec))] 
+  ###print(filagent)
+  
+  # Return a column containing 1's if no tags occus less than 5 times
   if(length(filagent) == 0){
-    return(NULL)
+    return(as.matrix(rep(1,length(uagentvec))))
   }
   
   ### Computing t-value for each agent ###
@@ -43,43 +38,46 @@ gen_uagentmat <- function(uagentvec, y){
   for(iter in 1:agentlen){
     # Get feature name
     agentfeat <- agentname[iter]
+    
     # Store the numerical value of whether the feature exists in the tag vector
     agentpred <- sapply(uagentvec, function(agentlist) as.numeric(is.element(agentfeat, unlist(agentlist))))
-    #if(iter == 1){
-    #  print(str(agentpred))
-    #}
+    
     # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
     # Check names(summary(lm(tar~pred))) to find the corresponding entry
     allagents[iter] <- summary(lm(y~agentpred))$coefficient[length(summary(lm(y~agentpred))$coefficient[, "t value"]), "t value"]
   }
-  #print(allagents)
+  ###print(allagents)
   
   # Filter out the tags with absolute value of t-stat less than 1, and order the vector
   selagents <- allagents[abs(allagents) >= 1]
   selagents <- sort(abs(selagents), decreasing = TRUE)
-  #print(selagents)
   selagentlen <- length(selagents)
+  
+  # Return a column containing 1's if no agents have an absolute t value larger or equal to 1
+  if(selagentlen == 0){
+    return(as.matrix(rep(1,length(uagentvec))))
+  }
   selagentname <- names(selagents)
-  #print(selagentname)
+  ###print(selagentname)
   
   # Create output matrix
   for(seliter in 1:selagentlen){
     # Get feature name
     selagentfeat <- selagentname[seliter]
     # Store the numerical value of whether the feature exists in the tag vector
-    selpred <- sapply(uagentvec, function(tag) as.numeric(is.element(selagentfeat, unlist(tag))))
+    selagentpred <- sapply(uagentvec, function(tag) as.numeric(is.element(selagentfeat, unlist(tag))))
     # Combine the columns in to one dataframe 
     if(seliter == 1){
-      opmatrix <- data.frame(selpred)
+      agentmatrix <- data.frame(selagentpred)
     }
     else{
-      opmatrix <- cbind(opmatrix,data.frame(selpred))  
+      agentmatrix <- cbind(agentmatrix,data.frame(selagentpred))  
     }
   }
   
   # Name the output matrix
-  colnames(opmatrix) <- paste("agent",selagentname, sep = "_")
-  opmatrix <- as.matrix(cbind(constant=1,opmatrix))
+  colnames(agentmatrix) <- paste("agent",selagentname, sep = "_")
+  agentmatrix <- as.matrix(cbind(constant=1,agentmatrix))
   
-  return(opmatrix)
+  return(agentmatrix)
 }

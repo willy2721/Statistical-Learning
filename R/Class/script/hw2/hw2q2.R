@@ -8,9 +8,7 @@ gen_utagmat <- function(utagvec,y){
   
   # Sort the tag vector by order 
   sortags <- sort(table(vec), decreasing=TRUE)
-  #print(sortags)
   
-  print(utagvec)
   # Filter out the tags that occur less than 5 times
   filtags <- sortags[sortags >= 5]
   

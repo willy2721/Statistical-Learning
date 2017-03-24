@@ -126,31 +126,35 @@ gen_uagentmat <- function(uagentvec, y){
   
   # Sort the agent vector by order 
   soragent <- sort(table(agentvec), decreasing=TRUE)
-  ###print(str(soragent))
   
-  # Filter out the agents that occur less than 5 times
-  filagent <- soragent[soragent >= 5]
-  ###print(str(filagent))
-    if(length(filagent) == 0){
-    return(NULL)
+  # Select the agents that occur more than 10 times and less than or equal to floor(0.5N) times
+  ###print(length(uagentvec))
+  
+  
+  filagent <- soragent[soragent >= 10]
+  filagent <- filagent[filagent <= floor(0.5 * length(uagentvec))] 
+  ###print(filagent)
+  
+  # Return a column containing 1's if no tags occus less than 5 times
+  if(length(filagent) == 0){
+    return(as.matrix(rep(1,length(uagentvec))))
   }
-
+  
   ### Computing t-value for each agent ###
-
+  
   # Create a named vector with the same length as the agent vector and set all values to NA
   agentlen <- length(filagent)
   agentname <- names(filagent)
   allagents <- structure(rep(NA, agentlen), names=agentname)
-
+  
   # Compute and store the t-stats for each tag
   for(iter in 1:agentlen){
     # Get feature name
     agentfeat <- agentname[iter]
+    
     # Store the numerical value of whether the feature exists in the tag vector
     agentpred <- sapply(uagentvec, function(agentlist) as.numeric(is.element(agentfeat, unlist(agentlist))))
-    #if(iter == 1){
-    #  print(str(agentpred))
-    #}
+    
     # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
     # Check names(summary(lm(tar~pred))) to find the corresponding entry
     allagents[iter] <- summary(lm(y~agentpred))$coefficient[length(summary(lm(y~agentpred))$coefficient[, "t value"]), "t value"]
@@ -160,45 +164,64 @@ gen_uagentmat <- function(uagentvec, y){
   # Filter out the tags with absolute value of t-stat less than 1, and order the vector
   selagents <- allagents[abs(allagents) >= 1]
   selagents <- sort(abs(selagents), decreasing = TRUE)
-  ###print(selagents)
   selagentlen <- length(selagents)
+  
+  # Return a column containing 1's if no agents have an absolute t value larger or equal to 1
+  if(selagentlen == 0){
+    return(as.matrix(rep(1,length(uagentvec))))
+  }
   selagentname <- names(selagents)
   ###print(selagentname)
-
+  
   # Create output matrix
   for(seliter in 1:selagentlen){
     # Get feature name
     selagentfeat <- selagentname[seliter]
     # Store the numerical value of whether the feature exists in the tag vector
-    selpred <- sapply(uagentvec, function(tag) as.numeric(is.element(selagentfeat, unlist(tag))))
+    selagentpred <- sapply(uagentvec, function(tag) as.numeric(is.element(selagentfeat, unlist(tag))))
     # Combine the columns in to one dataframe 
     if(seliter == 1){
-      opmatrix <- data.frame(selpred)
+      agentmatrix <- data.frame(selagentpred)
     }
     else{
-      opmatrix <- cbind(opmatrix,data.frame(selpred))  
+    agentmatrix <- cbind(agentmatrix,data.frame(selagentpred))  
     }
   }
   
   # Name the output matrix
-  colnames(opmatrix) <- paste("agent",selagentname, sep = "_")
-  opmatrix <- as.matrix(cbind(constant=1,opmatrix))
+  colnames(agentmatrix) <- paste("agent",selagentname, sep = "_")
+  agentmatrix <- as.matrix(cbind(constant=1,agentmatrix))
   
-  return(opmatrix)
+  return(agentmatrix)
 }
 
 ```
 
 ```{r}
 load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
-rtb1_train = rtb1_train[1:1500,]
+rtb1_train = rtb1_train[1:40,]
 y = rtb1_train$paying_price
 umat1 = gen_uagentmat(rtb1_train$user_agent,y)
 print(head(umat1))
-#print(head(sort(colSums(umat1), decreasing=TRUE), n=10))
+print(head(sort(colSums(umat1), decreasing=TRUE), n=10))
 
 ```
 
+```{r}
+#remove linearly independent columns
+qr1 = qr(umat1, tol =1e-7)
+ind3 = qr1$pivot[1:qr1$rank]
+rank0 = ncol(umat1)
+if(qr1$rank < rank0) {
+  cat("There are", rank0, "columns, but rank is only", qr1$rank,"\n")
+  toremove = qr1$pivot[(qr1$rank+1):rank0]
+  cat("list of features removed", toremove,"\n")
+  tokeep = qr1$pivot[1:qr1$rank]
+  umat1 = umat1[,tokeep]
+}
+w = solve(t(umat1) %*% umat1, t(umat1) %*% y)
+print(w)
+```
 
 
 
