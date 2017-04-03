@@ -2,39 +2,80 @@
 title: "R Notebook"
 output: html_notebook
 ---
+```{r}
+### Q1 ###
+lm_evmax <- function(y,xmat){
+  N <- nrow(xmat)
+  lambda <- 0.001 * N
+  xmatsqr <- t(xmat) %*% xmat
+  I <- diag(nrow(xmatsqr))
+  w <- (lambda * I + xmatsqr) %*% t(xmat) %*% y
+  e_zero <- y - xmat %*% w
+  beta_init <- as.numeric(N / (t(e_zero) %*% e_zero))
+  alpha_init <- as.numeric(lambda * beta_init)
+  alpha_old <- alpha_init
+  beta_old <- beta_init
+  
+  # Set initial dummy value for thresh
+  thresh <- 1
+  
+  while(thresh >= 10^(-5)){
+    A <- alpha_old * I + beta_old * xmatsqr
+    mN <- beta_old * solve(A) %*% t(xmat) %*% y
+    alpha <- alpha_old
+    beta <- beta_old
+    eigenvalues <- eigen(beta_old * xmatsqr, only.values = TRUE)
+    gamma <- sum(unlist(lapply(eigenvalues,function(x) x / (alpha_old + x))[1]))
+    alpha_new <- as.numeric(gamma / (t(mN) %*% mN))
+    e_one <- y - xmat %*% mN
+    beta_new <- as.numeric(1 / ((t(e_one) %*% e_one) / (N - gamma)))
+    thresh <- abs(alpha_old - alpha_new) + abs(beta_old - beta_new)  
+    alpha_old <- alpha_new
+    beta_old <- beta_new
+  }
+  mNsd <- sqrt(diag(solve(A)))
+  ret <- list(mN=mN,mNsd=mNsd,alpha=alpha,beta=beta)
+  return(ret)
+}
+
+```
+
+
+```{r}
+### TESTING ###
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb2_train.rdata")
+nfeat=seq(1, length(rtb2_train), by = 50)
+rtb3 = rtb2_train[1:10000,nfeat]
+y=as.matrix(rtb3[,1])
+xmat = model.matrix(paying_price~., data=rtb3)
+lmev1 = lm_evmax(y, xmat)
+lmev1
+
+```
+
 
 
 ```{r}
 ### Q2 ###
 gen_utagmat <- function(utagvec,y){
 
-# Define a function to calculate t-stats
-#reg_tvalue = function(y, x) {
-#  y=matrix(y, ncol=1)
-#  xmat=matrix(1, ncol=2, nrow=length(y))
-#  xmat[,2] = x
-#  bhead = solve(t(xmat)%*%xmat, t(xmat)%*%y)
-#  yhead = xmat %*% bhead
-#  e1 = y - yhead
-#  var1 = sum(e1 * e1) / (length(e1)-2)
-#  sigma2 = solve(t(xmat)%*%xmat) * var1
-#  t1=bhead[2]/sqrt(sigma2[2,2])
-#  return(t1)
-#}  
-  
-  
 # Create a tag vector containing the user_tags column split by commas
 utagvec <- strsplit(utagvec, ",")
-  
+###print(utagvec)
+
 # Unlist the tag vector 
 vec<-unlist(utagvec)
+###print(vec)
 
 # Sort the tag vector by order 
 sortags <- sort(table(vec), decreasing=TRUE)
-#print(sortags)
+###print(sortags)
 
 # Filter out the tags that occur less than 5 times
 filtags <- sortags[sortags >= 5]
+###print(str(filtags))
+###print(filtags)
+
 
 # Return a column containing 1's if no tags occus less than 5 times
 if(length(filtags) == 0){
@@ -47,18 +88,16 @@ if(length(filtags) == 0){
 fillen <- length(filtags)
 filname <- names(filtags)
 alltags <- structure(rep(NA, fillen), names=filname)
+###print(filname[1])
 
 # Compute and store the t-stats for each tag
 for(iter in 1:fillen){
   # Get feature name
   feat <- filname[iter]
   # Store the numerical value of whether the feature exists in the tag vector
-  pred <- sapply(utagvec, function(taglist) as.numeric(is.element(feat, unlist(taglist))))
+  pred <- sapply(utagvec, function(x) as.numeric(is.element(feat, unlist(x))))
   # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
-  # Check names(summary(lm(tar~pred))) to find the corresponding entry
-  alltags[iter] <- summary(lm(y~pred))$coefficient[length(summary(lm(y~pred))$coefficient[, "t value"]), "t value"]
-  #alltags[iter] <- reg_tvalue(y,pred)
-  
+  alltags[iter] <- summary(lm(y~pred))$coefficient["pred", "t value"]
 }
 
 # Filter out the tags with absolute value of t-stat less than 1, and order the vector
@@ -66,13 +105,14 @@ seltags <- alltags[abs(alltags) >= 1]
 seltags <- sort(abs(seltags), decreasing = TRUE)
 sellen <- length(seltags)
 selname <- names(seltags)
+###print(seltags)
 
 # Create output matrix
 for(seliter in 1:sellen){
   # Get feature name
   selfeat <- selname[seliter]
   # Store the numerical value of whether the feature exists in the tag vector
-  selpred <- sapply(utagvec, function(tag) as.numeric(is.element(selfeat, unlist(tag))))
+  selpred <- sapply(utagvec, function(x) as.numeric(is.element(selfeat, unlist(x))))
   # Combine the columns in to one dataframe 
   if(seliter == 1){
     opmatrix <- data.frame(selpred)
@@ -98,7 +138,7 @@ return(opmatrix)
 ```{r}
 ###　Testing ###
 load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
-rtb1_train <- rtb1_train[1:4,]
+rtb1_train <- rtb1_train[1:300,]
 umat1 = gen_utagmat(rtb1_train$user_tags, rtb1_train$paying_price)
 head(umat1)
 y = rtb1_train$paying_price
@@ -151,7 +191,6 @@ gen_uagentmat <- function(uagentvec, y){
     
     # Store the numerical value of whether the feature exists in the tag vector
     agentpred <- sapply(uagentvec, function(agentlist) as.numeric(is.element(agentfeat, unlist(agentlist))))
-    
     # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
     # Check names(summary(lm(tar~pred))) to find the corresponding entry
     allagents[iter] <- summary(lm(y~agentpred))$coefficient[length(summary(lm(y~agentpred))$coefficient[, "t value"]), "t value"]
