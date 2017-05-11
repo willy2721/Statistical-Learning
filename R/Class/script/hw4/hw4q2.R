@@ -6,15 +6,17 @@ entropy <- function(prob){
 
 filter_ig = function(dstrain, ypos = "pos", min_count = 5, ig_threshold = 10^(-5)){
   
-  # Store the first column and the number of occurences for each feature
+  # Store the first column
   s.product <- dstrain[,1]
-  feat_freq <- colSums(dstrain[,-1])
   
   # Set all values larger than 0 to 1 for every column after the second one
   dstrain[,-1][dstrain[,-1] > 0] <- 1
   
+  # Store the number of occurences for each feature
+  feat_freq <- colSums(dstrain[,-1])
+  
   # Calculate the probabilities of pos and neg in s.product
-  s_pos <- sum(s.product == "pos") / length(s.product)
+  s_pos <- sum(s.product == ypos) / length(s.product)
   
   # Calculate the entropy of Y(s.product)
   entropy_Y <- entropy(s_pos)
