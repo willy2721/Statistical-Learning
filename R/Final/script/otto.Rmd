@@ -1,0 +1,94 @@
+---
+title: "otto"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(randomForest)
+library(readr)
+library(dplyr)
+library(caret)
+```
+
+```{r}
+train <- read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Final/data/train.csv", na.strings = "")
+test <- read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Final/data/test.csv", na.strings = "")
+```
+
+```{r}
+head(train)
+head(test)
+```
+
+```{r}
+# Simple Random Forest Benchmark
+submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=100, importance=TRUE)
+submission[,2:10] <- predict(rf, test[,-1], type="prob")
+write.csv(submission, file="submission.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+# Multiclass logloss function
+logloss <- function(pred, tar){
+  max <- 1 - 10 ^ (-15)
+  min <- 10 ^ (-15)
+  pred[pred > max] = max
+  pred[pred < min] = min
+  rownum <- nrow(tar)
+  return(-sum(tar * log(pred)) / rownum)
+}
+
+```
+
+```{r}
+# Create dataframe for correct answer
+answer <- data.frame(id=train$id, Class_1=0, Class_2=0, Class_3=0, Class_4=0, Class_5=0, Class_6=0, Class_7=0, Class_8=0, Class_9=0)
+for(n in 1:nrow(answer)){
+  # Extract the target, transform to character then split by "_" and extract the number, then add 1 to get the correct index
+  answer[n,as.numeric(strsplit(as.character(train$target[n]),"_")[[1]][2]) + 1] <- 1
+}
+```
+
+
+
+```{r}
+# Creating folds with caret
+folds <- createFolds(train$target, k = 10, list = FALSE)
+train$fold <- folds
+head(train)
+
+# Create vector to store log-loss for each fold
+fold_log_loss <- c()
+
+# K-fold cross-validation
+for(k in 1:10){
+  # Seperate the training, testing folds    
+  test_i <- which(train$fold == k)
+  train_fold <- train[-test_i, ]
+  test_fold <- train[test_i, ]
+  ans_fold <- answer[test_i,]
+  
+  ### THIS IS THE PART WHERE YOU TRY DIFFERENT MODELS
+  
+  # Perform simple random forest on trainfold
+  prediction <- data.frame(id=test_fold$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+  rf_train <- randomForest(train_fold[,c(-1,-95)], as.factor(train_fold$target), ntree=100, importance=TRUE)
+  
+  # Test simple random forest on testfold
+  prediction[,2:10] <- predict(rf_train, test_fold[,-1], type="prob")
+  
+  # Evaluate log-loss
+  fold_log_loss[k] <- logloss(as.matrix(prediction[,-1]),as.matrix(ans_fold[,-1]))
+}
+
+
+
+
+
+```
+
+
