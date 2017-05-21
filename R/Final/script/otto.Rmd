@@ -9,6 +9,10 @@ library(randomForest)
 library(readr)
 library(dplyr)
 library(caret)
+library(adabag)
+library(rminer)
+library(class)
+library(kknn)
 ```
 
 ```{r}
@@ -17,19 +21,10 @@ test <- read.csv("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second se
 ```
 
 ```{r}
-head(train)
-head(test)
+# Some algorightm require the same number of columns
+test$target <- NA
+levels(test$target) <- levels(train$target)
 ```
-
-```{r}
-# Simple Random Forest Benchmark
-submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=100, importance=TRUE)
-submission[,2:10] <- predict(rf, test[,-1], type="prob")
-write.csv(submission, file="submission.csv", row.names = FALSE)
-
-```
-
 
 ```{r}
 # Multiclass logloss function
@@ -41,8 +36,9 @@ logloss <- function(pred, tar){
   rownum <- nrow(tar)
   return(-sum(tar * log(pred)) / rownum)
 }
-
 ```
+
+
 
 ```{r}
 # Create dataframe for correct answer
@@ -54,41 +50,139 @@ for(n in 1:nrow(answer)){
 ```
 
 
+```{r}
+# Simple Random Forest Benchmark
+random_forest_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=200, importance=TRUE)
+random_forest_submission[,2:10] <- predict(rf, test[,c(-1,-95)], type="prob")
+write.csv(random_forest_submission, file="random_forest_submission.csv", row.names = FALSE)
+
+```
 
 ```{r}
+# Simple Adabag boosting implementation 
+adaboost_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+
+# SAMME method
+adaboost <- boosting(target ~ .-id, data = train, boos = TRUE, mfinal = 100, coeflearn = 'Zhu')
+adaboost.pred <- predict.boosting(adaboost, newdata = test)
+adaboost_submission[,2:10] <- adaboost.pred$prob
+write.csv(adaboost_submission, file="adaboost_submission.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+# Simple Adabag bagging implementation 
+adabag_200_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+
+# Bagging implementation
+adabag_200 <- bagging(target ~ .-id, data = train, mfinal = 200)
+adabag_200.pred <- predict.bagging(adabag_200, newdata = test)
+adabag_200_submission[,2:10] <- adabag_200.pred$prob
+write.csv(adabag_200_submission, file="adabag_200_submission.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Simple knn classification (using one fold as test)
+kknn_20_submission <- data.frame(id=test_fold$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+kknn.20 <- kknn(target ~ .-id, train_fold, test_fold, na.action = na.omit(), k = 20, distance = 2, kernel = "optimal")
+kknn_20_submission[,2:10] <- kknn.20$prob
+kknn_20_log_loss <- logloss(as.matrix(kknn_20_submission[,-1]),as.matrix(ans_fold[,-1]))
+kknn_20_log_loss
+
+```
+
+
+
+
+
+```{r}
+# Select just one fold as the entire test data (just to reduce training time)
+# PERFORMANCE SUCKS ... DON'T DO THIS
+  fold_one <- which(train$fold == 1)
+  reduced_train <- train[fold_one,]
+  reduced_answer <- answer[fold_one,]
+  
+  min_train_index <- holdout(reduced_train$target, ratio=2/3, mode="stratified")
+  min_train <- reduced_train[min_train_index$tr,]
+  min_test <- reduced_train[min_train_index$ts,]
+  min_ans <- reduced_answer[min_train_index$ts,]
+  
+  
+```
+
+```{r}
+# Random Forest on minimum data
+# PERFORMANCE SUCKS ... DON'T DO THIS
+min_rf_submission <- data.frame(id=min_test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+min_rf <- randomForest(min_train[,c(-1,-95)], as.factor(min_train$target), ntree=200, importance=TRUE)
+min_rf_submission[,2:10] <- predict(min_rf, min_test[,c(-1,-95)], type="prob")
+min_rf_logloss <- logloss(as.matrix(min_rf_submission[,-1]),as.matrix(min_ans[,-1]))
+
+```
+
+
+```{r}
+# Adaboost on minimum data
+# PERFORMANCE SUCKS ... DON'T DO THIS
+min_adaboost_submission <- data.frame(id=min_test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+min_adaboost <- boosting(target ~ .-id, data = min_train, boos = TRUE, mfinal = 100, coeflearn = 'Zhu')
+min_test$target <- NA
+levels(min_test$target) <- levels(min_train$target)
+min_adaboost.pred <- predict.boosting(min_adaboost, newdata = min_test)
+min_adaboost_submission[,2:10] <- min_adaboost.pred$prob
+min_adaboost_loss <- logloss(as.matrix(min_adaboost_submission[,-1]),as.matrix(min_ans[,-1]))
+
+```
+
+
+```{r}
+# TAKES MAJOR TIME ... IF I GET RICH AND BUY A WORKSTATION ...
 # Creating folds with caret
 folds <- createFolds(train$target, k = 10, list = FALSE)
 train$fold <- folds
-head(train)
 
-# Create vector to store log-loss for each fold
+# Create vector to store log-loss for each fold and execution time
 fold_log_loss <- c()
+fold_rf_exec_time <- c()
 
 # K-fold cross-validation
 for(k in 1:10){
+  
+  # Measure execution time
+  start_time <- Sys.time()
+  
   # Seperate the training, testing folds    
   test_i <- which(train$fold == k)
   train_fold <- train[-test_i, ]
   test_fold <- train[test_i, ]
   ans_fold <- answer[test_i,]
+  train_fold$fold <- NULL
+  test_fold$fold <- NULL
   
   ### THIS IS THE PART WHERE YOU TRY DIFFERENT MODELS
   
   # Perform simple random forest on trainfold
   prediction <- data.frame(id=test_fold$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-  rf_train <- randomForest(train_fold[,c(-1,-95)], as.factor(train_fold$target), ntree=100, importance=TRUE)
+  rf_train <- randomForest(train_fold[,c(-1,-95)], as.factor(train_fold$target), ntree=200, importance=TRUE)
   
   # Test simple random forest on testfold
   prediction[,2:10] <- predict(rf_train, test_fold[,-1], type="prob")
   
   # Evaluate log-loss
   fold_log_loss[k] <- logloss(as.matrix(prediction[,-1]),as.matrix(ans_fold[,-1]))
+  
+  end_time <- Sys.time()
+  fold_rf_exec_time[k] <- end_time - start_time
 }
 
 
-
-
+fold_log_loss
+mean(fold_log_loss)
 
 ```
+
 
 
