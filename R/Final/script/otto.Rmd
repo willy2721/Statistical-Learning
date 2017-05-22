@@ -13,6 +13,11 @@ library(adabag)
 library(rminer)
 library(class)
 library(kknn)
+library(xgboost)
+library(methods)
+library(data.table)
+library(magrittr)
+
 ```
 
 ```{r}
@@ -38,8 +43,6 @@ logloss <- function(pred, tar){
 }
 ```
 
-
-
 ```{r}
 # Create dataframe for correct answer
 answer <- data.frame(id=train$id, Class_1=0, Class_2=0, Class_3=0, Class_4=0, Class_5=0, Class_6=0, Class_7=0, Class_8=0, Class_9=0)
@@ -48,6 +51,41 @@ for(n in 1:nrow(answer)){
   answer[n,as.numeric(strsplit(as.character(train$target[n]),"_")[[1]][2]) + 1] <- 1
 }
 ```
+
+```{r}
+# Simple XGBoost without tuning
+xgboost_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+
+train_copy <- train
+test_copy <- test
+train_copy$id <- NULL
+test_copy$id <- NULL
+
+# Obtain numerical values as class starting from 0
+target <- train_copy$target
+num_target <- as.numeric(unlist(strsplit(as.character(train$target),"_"))[c(FALSE, TRUE)]) - 1
+
+# Remove the target column and transform to matrix
+train_copy$target <- NULL
+
+# XGBoost only takes numeric values as data input
+train_copy[] <- lapply(train_copy, as.numeric)
+test_copy[] <- lapply(test_copy, as.numeric)
+train_matrix <- as.matrix(train_copy)
+test_matrix <- as.matrix(test_copy)
+
+# XGBoost
+param <- list("objective" = "multi:softprob", "eval_metric" = "mlogloss", "num_class" = 9)
+xgb_untuned <- xgboost(param = param, data = train_matrix, label = num_target, nrounds = 50)
+xgboost_submission[,2:10] <- matrix(predict(xgb_untuned, test_matrix), ncol = 9, byrow = T)
+write.csv(xgboost_submission, file="xgboost_submission.csv", row.names = FALSE)
+
+```
+
+
+
+
+
 
 
 ```{r}
@@ -93,6 +131,11 @@ kknn_20_log_loss <- logloss(as.matrix(kknn_20_submission[,-1]),as.matrix(ans_fol
 kknn_20_log_loss
 
 ```
+
+```{r}
+
+```
+
 
 
 
