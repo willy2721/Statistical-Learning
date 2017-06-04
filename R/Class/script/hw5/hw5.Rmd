@@ -1,0 +1,153 @@
+---
+title: "hw4"
+output: html_notebook
+---
+
+
+```{r}
+library("randomForest")
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw5/hw5ds1.rdata")
+```
+
+```{r}
+filter_chisq = function(dstrain, ypos="pos", min_count=5, chi_threshold = 1e-5) {
+    nugrams = ncol(dstrain) #number of unigram+1
+    chiall = rep(-1, nugrams) #the first column is always -1, and will not be selected.
+    yvec = as.numeric(dstrain[,1]==ypos)
+    options(warn = -1) #silence the warning
+    for(ii in 2:nugrams) {
+        tmp1=cbind(yvec, as.numeric(dstrain[,ii]>0))
+        tmp1a=table(tmp1[,1], tmp1[,2])
+        
+        if(nrow(tmp1a)<2 | ncol(tmp1a)<2) {
+            #stop("tmp1a table dimension too small!")
+            chiall[ii] = 0
+        } else if(sum(tmp1[,2])<=min_count) {
+            chiall[ii] = 0
+            #cat("feature", ii, "count too low, skip\n")
+        } else {
+            tmp2=chisq.test(tmp1a, correct=FALSE)
+            chiall[ii] = tmp2$statistic
+        }    
+    }
+    options(warn = 0) #turn the warnings back on
+    o1 = order(chiall, decreasing=TRUE)
+    
+    tmpind1 = chiall[o1] > chi_threshold
+    if(sum(tmpind1) ==0) {
+        #cat("We have not features selected. The maximum value of chisq test is ", max(chiall), "\n")
+        return(list(colpos = NULL, colname=NULL, chistat=NULL))
+    } else {
+        o2=o1[tmpind1]
+        retname = names(dstrain)[o2]
+        return(list(colpos = o2, colname=retname, chistat=chiall[o2]))
+    }
+}
+```
+
+
+```{r}
+rf_carton <- function(dsall, folds, testfold, ypos = "pos", chi_threshhold = 0.1, grid_length = 20, grid_type = "loglinear", rfntree = 500, debuglevel = 0){
+
+  tuningfold <- ifelse(testfold == 1, 10, testfold - 1)
+  testingrows <- unlist(folds[[testfold]])
+  tuningrows <- unlist(folds[[tuningfold]])
+  trainingrows <- setdiff(c(1:nrow(dsall)), unlist(folds[[testfold]]))
+  subtrainingrows <- setdiff(trainingrows, unlist(folds[[tuningfold]]))
+  
+  # Keep first column as results
+  s.product <- dsall[,1]
+  
+  # Perform chi-square feature selection on subtraining set
+  subtrainingset <- dsall[subtrainingrows,]
+  fil_chi_sub <- filter_chisq(subtrainingset, ypos, 5, chi_threshhold)
+  
+  # Keep only features with high chi-square
+  dsfil <- cbind(s.product,dsall[,fil_chi_sub$colpos])
+  
+  # Subset tuning and subtraining set
+  tuningset <- dsfil[tuningrows,]
+  subtrainingset <- dsfil[subtrainingrows,]
+  
+  # Prepare grid
+  m_min = 2
+  m_max = ncol(subtrainingset) - 1
+  if(grid_type == "equal"){
+    grids <- unique(round(seq(m_min, m_max, length=grid_length )))
+  } else{
+    grids <- unique(round(exp(seq(log(m_min), log(m_max), length=grid_length))))
+  }
+  mgrids <- grids
+  
+  # Train and record random forest
+  best_mtry <- 1000
+  maxF1 <- 0
+  f1_all <- c()
+  
+  for(i in 1:length(grids)){
+    rf <- randomForest(x = subset(subtrainingset, select = -s.product), y = as.factor(subtrainingset$s.product), xtest = subset(tuningset, select = -s.product), ytest = as.factor(tuningset$s.product), ntree = rfntree, mtry = grids[i])
+  
+    # Calculate precision, recall and F1
+    tn <- rf$test$confusion[1,1]
+    tp <- rf$test$confusion[2,2]
+    fn <- rf$test$confusion[2,1]
+    fp <- rf$test$confusion[1,2]
+    pre <- tp / (tp + fp)
+    rec <- tp / (tp + fn)
+    f1 <-  2 * pre * rec / (pre + rec)
+    f1_all[i] <- f1
+    # Find model with largest f1 score and smallest mtry
+    if(f1 > maxF1){
+      maxF1 <- f1
+      best_mtry <- grids[i]
+    }
+  }
+  
+  # Perform chi-square feature selection again on full training set
+  trainingset <- dsall[trainingrows,]
+  testingset <- dsall[testingrows,]
+  fselect <- filter_chisq(trainingset, ypos, 5, chi_threshhold)
+  
+  # Keep only features with high chi-square
+  dsfil2 <- cbind(s.product,dsall[,fselect$colpos])
+  
+  # Subset testing and training
+  testingset <- dsfil2[testingrows,]
+  trainingset <- dsfil2[trainingrows,]
+  rf2 <- randomForest(x = subset(trainingset, select = -s.product), y = as.factor(trainingset$s.product), xtest = subset(testingset, select = -s.product), ytest = as.factor(testingset$s.product), ntree = rfntree, mtry = best_mtry)
+  
+  
+  # Calculate precision, recall and F1
+  tn2 <- rf2$test$confusion[1,1]
+  tp2 <- rf2$test$confusion[2,2]
+  fn2 <- rf2$test$confusion[2,1]
+  fp2 <- rf2$test$confusion[1,2]
+  pre2 <- tp2 / (tp2 + fp2)
+  rec2 <- tp2 / (tp2 + fn2)
+  f1 <-  2 * pre2 * rec2 / (pre2 + rec2)
+  
+  test <- list(pre2, rec2, f1)
+  names(test) <- c("precision","recall","f1")
+  return(list(mgrids = mgrids, f1_all = f1_all, best_m = best_mtry, test = test, fselect = fselect))
+
+}
+
+```
+
+```{r}
+set.seed(5555)
+rftest=rf_carton(ds1, cvfold, testfold=1, debuglevel=0)
+
+```
+
+```{r}
+print(rftest$mgrids)
+print(rftest$f1_all)
+```
+
+```{r}
+print(rftest$f1_all)
+print(rftest$best_m)
+print(rftest$test)
+```
+
