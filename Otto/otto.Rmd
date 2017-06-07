@@ -1,0 +1,135 @@
+---
+title: "otto"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(randomForest)
+library(readr)
+library(dplyr)
+library(caret)
+library(adabag)
+library(rminer)
+library(class)
+library(kknn)
+library(xgboost)
+library(methods)
+library(data.table)
+library(magrittr)
+options( java.parameters = "-Xmx4g" )
+library(extraTrees)
+source("model_xgboost.R")
+source("logloss.R")
+source("answer.R")
+```
+
+```{r}
+train <- read.csv("C:/Users/Willy/OneDrive/?…¬?”¨/?°å¤?/Senior courses/Second semester/Statistical Learning/R/Final/data/train.csv", na.strings = "")
+test <- read.csv("C:/Users/Willy/OneDrive/?…¬?”¨/?°å¤?/Senior courses/Second semester/Statistical Learning/R/Final/data/test.csv", na.strings = "")
+```
+
+
+```{r}
+# Simple Random Forest implementation
+random_forest_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=1200, mtry = 20)
+random_forest_submission[,2:10] <- predict(rf, test[,c(-1,-95)], type="prob")
+write.csv(random_forest_submission, file="random_forest_submission.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Simple extraTrees implementation #
+extraTrees_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+extra <- extraTrees(train[,c(-1,-95)], as.factor(train$target), mtry = 20, ntree=600, nodesize = 1, numThreads = 2)
+extraTrees_submission[,2:10] <- predict(extra, test[,c(-1,-95)], probability = TRUE)
+write.csv(extraTrees_submission, file="extraTrees_submission.csv", row.names = FALSE)
+
+
+```
+
+
+```{r}
+# Simple Adabag boosting implementation 
+adaboost_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+
+# SAMME method
+adaboost <- boosting(target ~ .-id, data = train, boos = TRUE, mfinal = 100, coeflearn = 'Zhu')
+adaboost.pred <- predict.boosting(adaboost, newdata = test)
+adaboost_submission[,2:10] <- adaboost.pred$prob
+write.csv(adaboost_submission, file="adaboost_submission.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+# Simple Adabag bagging implementation 
+adabag_200_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+
+# Bagging implementation
+adabag_200 <- bagging(target ~ .-id, data = train, mfinal = 200)
+adabag_200.pred <- predict.bagging(adabag_200, newdata = test)
+adabag_200_submission[,2:10] <- adabag_200.pred$prob
+write.csv(adabag_200_submission, file="adabag_200_submission.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Simple knn classification (k = 128, distance = 2)
+kknn_128_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+kknn.128 <- kknn(target ~ .-id, train, test, na.action = na.omit(), k = 128, distance = 2, kernel = "optimal")
+kknn_128_submission[,2:10] <- kknn.128$prob
+write.csv(kknn_128_submission, file="kknn_128_submission.csv", row.names = FALSE)
+
+```
+
+```{r}
+# Code for cross-validation
+# TAKES MAJOR TIME ... IF I GET RICH AND BUY A WORKSTATION ...
+# Creating folds with caret
+folds <- createFolds(train$target, k = 10, list = FALSE)
+train$fold <- folds
+
+# Create vector to store log-loss for each fold and execution time
+fold_log_loss <- c()
+fold_rf_exec_time <- c()
+
+# K-fold cross-validation
+for(k in 1:10){
+  
+  # Measure execution time
+  start_time <- Sys.time()
+  
+  # Seperate the training, testing folds    
+  test_i <- which(train$fold == k)
+  train_fold <- train[-test_i, ]
+  test_fold <- train[test_i, ]
+  ans_fold <- answer[test_i,]
+  train_fold$fold <- NULL
+  test_fold$fold <- NULL
+  
+  ### THIS IS THE PART WHERE YOU TRY DIFFERENT MODELS
+  
+  # Perform simple random forest on trainfold
+  prediction <- data.frame(id=test_fold$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+  rf_train <- randomForest(train_fold[,c(-1,-95)], as.factor(train_fold$target), ntree=200, importance=TRUE)
+  
+  # Test simple random forest on testfold
+  prediction[,2:10] <- predict(rf_train, test_fold[,-1], type="prob")
+  
+  # Evaluate log-loss
+  fold_log_loss[k] <- logloss(as.matrix(prediction[,-1]),as.matrix(ans_fold[,-1]))
+  
+  end_time <- Sys.time()
+  fold_rf_exec_time[k] <- end_time - start_time
+}
+
+
+fold_log_loss
+mean(fold_log_loss)
+
+```
+
+
+
