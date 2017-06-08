@@ -20,58 +20,31 @@ library(magrittr)
 options( java.parameters = "-Xmx4g" )
 library(extraTrees)
 source("model_xgboost.R")
-source("logloss.R")
-source("answer.R")
+source("utility.R")
 ```
 
 ```{r}
-train <- read.csv("C:/Users/Willy/OneDrive/?…¬?”¨/?°å¤?/Senior courses/Second semester/Statistical Learning/R/Final/data/train.csv", na.strings = "")
-test <- read.csv("C:/Users/Willy/OneDrive/?…¬?”¨/?°å¤?/Senior courses/Second semester/Statistical Learning/R/Final/data/test.csv", na.strings = "")
+train <- read.csv("C:/Users/Willy/OneDrive/¤½¥Î/¥x¤j/Senior courses/Second semester/Statistical Learning/R/Otto/data/train.csv", na.strings = "")
+test <- read.csv("C:/Users/Willy/OneDrive/¤½¥Î/¥x¤j/Senior courses/Second semester/Statistical Learning/R/Otto/data/test.csv", na.strings = "")
 ```
 
 
 ```{r}
 # Simple Random Forest implementation
 random_forest_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=1200, mtry = 20)
+rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=600, mtry = 20)
 random_forest_submission[,2:10] <- predict(rf, test[,c(-1,-95)], type="prob")
 write.csv(random_forest_submission, file="random_forest_submission.csv", row.names = FALSE)
 
 ```
 
 ```{r}
-# Simple extraTrees implementation #
+# Simple extraTrees implementation 
 extraTrees_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-extra <- extraTrees(train[,c(-1,-95)], as.factor(train$target), mtry = 20, ntree=600, nodesize = 1, numThreads = 2)
+extra <- extraTrees(train[,c(-1,-95)], as.factor(train$target), mtry = 20, ntree=800, nodesize = 1, numThreads = 2)
 extraTrees_submission[,2:10] <- predict(extra, test[,c(-1,-95)], probability = TRUE)
 write.csv(extraTrees_submission, file="extraTrees_submission.csv", row.names = FALSE)
 
-
-```
-
-
-```{r}
-# Simple Adabag boosting implementation 
-adaboost_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-
-# SAMME method
-adaboost <- boosting(target ~ .-id, data = train, boos = TRUE, mfinal = 100, coeflearn = 'Zhu')
-adaboost.pred <- predict.boosting(adaboost, newdata = test)
-adaboost_submission[,2:10] <- adaboost.pred$prob
-write.csv(adaboost_submission, file="adaboost_submission.csv", row.names = FALSE)
-
-```
-
-
-```{r}
-# Simple Adabag bagging implementation 
-adabag_200_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-
-# Bagging implementation
-adabag_200 <- bagging(target ~ .-id, data = train, mfinal = 200)
-adabag_200.pred <- predict.bagging(adabag_200, newdata = test)
-adabag_200_submission[,2:10] <- adabag_200.pred$prob
-write.csv(adabag_200_submission, file="adabag_200_submission.csv", row.names = FALSE)
 
 ```
 
