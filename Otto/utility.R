@@ -5,8 +5,11 @@ logloss <- function(pred, tar){
   pred[pred > max] = max
   pred[pred < min] = min
   rownum <- nrow(tar)
-  return(-sum(tar * log(pred)) / rownum)
+  # Normalize
+  pred <- ifelse(is.null(rownum), pred / sum(pred), apply(pred, 1, function(x)  x / sum(x)))
+  return(-sum(tar * log(pred)) / ifelse(is.null(rownum), length(tar), rownum))
 }
+
 
 # Given train data create dataframe for correct answer
 myanswer <- function(train){

@@ -17,34 +17,108 @@ library(xgboost)
 library(methods)
 library(data.table)
 library(magrittr)
-options( java.parameters = "-Xmx4g" )
+options( java.parameters = "-Xmx2g" )
 library(extraTrees)
+library(CORElearn)
+
+source("model_ada.R")
 source("model_xgboost.R")
+source("rf_prob_calibration.R")
+#source("rf_on_calibrate.R")
 source("utility.R")
 ```
 
 ```{r}
-train <- read.csv("C:/Users/Willy/OneDrive/¤½¥Î/¥x¤j/Senior courses/Second semester/Statistical Learning/R/Otto/data/train.csv", na.strings = "")
-test <- read.csv("C:/Users/Willy/OneDrive/¤½¥Î/¥x¤j/Senior courses/Second semester/Statistical Learning/R/Otto/data/test.csv", na.strings = "")
+train <- read.csv("C:/Users/Willy/OneDrive/?…¬?”¨/?°å¤?/Senior courses/Second semester/Statistical Learning/Otto/data/train.csv", na.strings = "")
+test <- read.csv("C:/Users/Willy/OneDrive/?…¬?”¨/?°å¤?/Senior courses/Second semester/Statistical Learning/Otto/data/test.csv", na.strings = "")
 ```
+
+```{r}
+# Get answer for train
+train_answer <- myanswer(train)
+#head(train_answer)
+```
+
 
 
 ```{r}
 # Simple Random Forest implementation
 random_forest_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=600, mtry = 20)
+rf <- randomForest(train[,c(-1,-95)], as.factor(train$target), ntree=800, mtry = 20, nodesize = 1)
 random_forest_submission[,2:10] <- predict(rf, test[,c(-1,-95)], type="prob")
 write.csv(random_forest_submission, file="random_forest_submission.csv", row.names = FALSE)
 
 ```
 
-```{r}
-# Simple extraTrees implementation 
-extraTrees_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-extra <- extraTrees(train[,c(-1,-95)], as.factor(train$target), mtry = 20, ntree=800, nodesize = 1, numThreads = 2)
-extraTrees_submission[,2:10] <- predict(extra, test[,c(-1,-95)], probability = TRUE)
-write.csv(extraTrees_submission, file="extraTrees_submission.csv", row.names = FALSE)
 
+```{r}
+# Try train / calibrate percentages of 0.8, 0.75, 0.7
+rf_cali <- rf_on_calibrate(train, 0.8, 800)
+class_cali_80 <- rf_prob_calibration(rf_cali[['subtrain']], rf_cali[['caliset']], rf_cali[['cali_answer']], rf_cali[['subtrain_rf']], 0.8, 800)
+
+rf_cali[['subtrain']]
+rf_cali[['caliset']]
+rf_cali[['cali_answer']]
+str(rf_cali[['subtrain_rf']])
+class_cali_80[["class_probs"]]
+
+
+# Create matrix for prediction probabilities after isoReg and Platt
+prob_iso_80 <- c()
+prob_platt_80 <- c()
+for(i in 1:9){
+  prob_iso_80 <- cbind(prob_iso_80, class_cali_80[["class_probs"]][[i]]$IsoReg_Calibrated)
+  prob_platt_80 <- cbind(prob_platt_80, class_cali_80[["class_probs"]][[i]]$Platt_Calibrated)
+}
+
+#logloss(class_cali_80$cali_predict,cali_80_ans)
+#class_cali_80$cali_predict
+#prob_iso_80
+
+# Evaluate logloss for original predicted probabilities and calibrated probabilities
+cali_80_ans <- rf_cali[['cali_answer']][,-1]
+logloss_80 <- c(logloss(class_cali_80$cali_predict,cali_80_ans),logloss(prob_iso_80,cali_80_ans), logloss(prob_platt_80,cali_80_ans))
+names(logloss_80) <- c("Original","Iso-calibrated", "Platt-calibrated")
+logloss_80
+
+
+
+```
+
+
+
+
+```{r}
+############################################################
+
+### Visualization ###
+# Plot a histogram
+ans_class_1_hist <- ggplot(ans_class_1_prob, aes(x = Probability)) + geom_histogram(binwidth = 0.02) + facet_grid(Class ~ .) + xlab("Probability Segment")
+ans_class_1_hist
+
+# Plot calibration
+# Method 1 using caret and ggplot2
+plot(calibration(Class ~ Probability + IsoReg_Calibrated + Platt_Calibrated, data = ans_class_1_prob, class = "1"))
+
+
+# Method 2 using CORElearn package
+reliabilityPlot(pred_is_class_1, ans_is_class_1, titleText="Class 1 reliability", boxing="equidistant", noBins=10, classValue = 1, printWeight=FALSE)
+
+############################################################
+```
+
+
+
+
+
+
+```{r}
+# Simple extraTrees implementation # NOT ENOUGH MEMORY!!
+#extraTrees_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+#extra <- extraTrees(train[,c(-1,-95)], as.factor(train$target), mtry = 20, ntree=600, nodesize = 1, numThreads = 2)
+#extraTrees_submission[,2:10] <- predict(extra, test[,c(-1,-95)], probability = TRUE)
+#write.csv(extraTrees_submission, file="extraTrees_submission.csv", row.names = FALSE)
+#
 
 ```
 
@@ -56,6 +130,9 @@ kknn_128_submission[,2:10] <- kknn.128$prob
 write.csv(kknn_128_submission, file="kknn_128_submission.csv", row.names = FALSE)
 
 ```
+
+
+
 
 ```{r}
 # Code for cross-validation
