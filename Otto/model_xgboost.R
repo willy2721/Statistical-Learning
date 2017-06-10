@@ -1,7 +1,5 @@
-myxgb <- function(train, test, eta, gamma, max_depth, min_child_weight, subsample, colsample_bytree){
-  # Simple XGBoost
-  xgboost_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-  
+toxgbmatrix <- function(train, test){
+  # Make a copy
   train_copy <- train
   test_copy <- test
   train_copy$id <- NULL
@@ -19,10 +17,17 @@ myxgb <- function(train, test, eta, gamma, max_depth, min_child_weight, subsampl
   test_copy[] <- lapply(test_copy, as.numeric)
   train_matrix <- as.matrix(train_copy)
   test_matrix <- as.matrix(test_copy)
+  return(list(train_matrix = train_matrix, test_matrix = test_matrix))
+}
+
+
+myxgb <- function(train_matrix, test_matrix, eta, gamma, max_depth, min_child_weight, subsample, colsample_bytree, nrounds){
+  # Simple XGBoost
+  xgboost_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
   
   # XGBoost
   param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = eta, gamma = gamma, max_depth = max_depth, min_child_weight = min_child_weight, subsample = subsample, colsample_bytree = colsample_bytree, num_class = 9)
-  xgb_first_tune <- xgboost(param = param, data = train_matrix, label = num_target, nrounds = 1073)
+  xgb_first_tune <- xgboost(param = param, data = train_matrix, label = num_target, nrounds = nrounds)
   xgboost_submission[,2:10] <- matrix(predict(xgb_first_tune, test_matrix), ncol = 9, byrow = T)
   
   write.csv(xgboost_submission, file="xgboost_first_tune_submission.csv", row.names = FALSE)
