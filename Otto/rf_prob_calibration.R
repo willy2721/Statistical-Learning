@@ -74,19 +74,15 @@ rf_prob_calibration <- function(subtrain, caliset, cali_answer, subtrain_rf, rat
 # Input : Training set, testing set, number of bagging(1 if no bag)
 # Output : Predicted probabilities, isoReg calibrated probabilities and Platt calibrated probabilities for each class
 rf_cali_cv_bagged <- function(train, test, nbag, ncv){
-  train_meta_list <- list()
-  test_predict_bagged <- matrix(0, nrow = 144368, ncol = 9)
-  
   # Bag the model 
   for(n in 1 : nbag){
     # Cross-validate calibration
-    folds <- createFolds(train$target, k = nbag, list = FALSE)
+    folds <- createFolds(train$target, k = ncv, list = FALSE)
     train$fold <- folds
     
     # Store meta feature for train and predict
-    
     train_meta <- data.frame()
-    test_predict_combined <- matrix(0, nrow = nrow(test), ncol = ncol(test))
+    test_meta <- matrix(0, nrow = nrow(test), ncol = 9)
     
     # K-fold cross-validation
     for(k in 1 : ncv){
@@ -104,7 +100,7 @@ rf_cali_cv_bagged <- function(train, test, nbag, ncv){
       cali_predict <- predict(subtrain_rf, caliset[,c(-1,-95,-96)], type="prob")
       # Predict for test set 
       test_predict <- predict(subtrain_rf, test[,-1], type="prob")
-      
+
       # Loop through each class
       for(i in 1:9){
         # Store predicted class probability and correct class
@@ -118,32 +114,31 @@ rf_cali_cv_bagged <- function(train, test, nbag, ncv){
         cali_predict[,i] <- applyCalibration(cali_predict[,i], calibration)
       } 
       
-      # Add prediction to test_predict_combined and train_meta
-      test_predict_combined <- test_predict_combined + test_predict
+      # Add prediction to test_meta and train_meta
       train_meta <- rbind(train_meta, cali_predict)
+      test_meta <- test_meta + test_predict
       
     }
     
-    # Get the average of three test_predictions (also meta feature for test)
-    test_predict_combined <- test_predict_combined / ncv
-    
     # Order meta feature dataframe by row name
-    train_meta[order(as.numeric(row.names(train_meta))),]
-    train_meta_list[[n]] <- train_meta
-    test_predict_bagged <- test_predict_bagged + test_predict_combined
+    train_meta <- train_meta[order(as.numeric(row.names(train_meta))),]
+    # Get the average of three test_predictions (also meta feature for test)
+    test_meta <- test_meta / ncv
+    if(nbag == 1){
+      return(list(train_meta = train_meta, test_meta = test_meta))
+    }
+    
+    # Add to bagging
+    train_meta_bagged <- ifelse(n == 1, train_meta, train_meta_bagged + train_meta)
+    test_meta_bagged <- ifelse(n == 1, test_meta, test_meta_bagged + test_meta)
     
   }
   # Get average
-  train_meta_bagged <- train_meta_list[[1]]
-  if(ncv > 1){
-    for(cv in 2 : ncv){
-      train_meta_bagged <- train_meta_bagged + train_meta_list[[cv]]
-    }
-    train_meta_bagged <- train_meta_bagged / ncv
-  }
-  test_predict_bagged <- test_predict_bagged / ncv
+  train_meta_bagged <- train_meta_bagged / nbag
+  test_meta_bagged <- test_meta_bagged / nbag
   
-  return(list(train_meta_bagged = train_meta_bagged, test_predict_bagged <- test_predict_bagged))
+  
+  return(list(train_meta_bagged = train_meta_bagged, test_meta_bagged = test_meta_bagged))
   
 }
 
