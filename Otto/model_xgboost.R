@@ -17,7 +17,7 @@ toxgbmatrix <- function(train, test){
   test_copy[] <- lapply(test_copy, as.numeric)
   train_matrix <- as.matrix(train_copy)
   test_matrix <- as.matrix(test_copy)
-  return(list(train_matrix = train_matrix, test_matrix = test_matrix))
+  return(list(train_matrix = train_matrix, test_matrix = test_matrix, num_target = num_target))
 }
 
 
@@ -35,15 +35,6 @@ myxgb <- function(train_matrix, test_matrix, eta, gamma, max_depth, min_child_we
   #param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.05, gamma = 1, max_depth = 9, min_child_weight = 5, subsample=0.8, colsample_bytree=0.8, num_class = 9)
 }
 
-myxgb_cv <- function(train_matrix, test_matrix, lab, param, round_n, fold_n, strat, early_n, print_n){
-  # Trying xgb.cv to find optimal stopping round
-  xgb_cv <- xgb.cv( params = param, data = train_matrix, nrounds = round_n, nfold = fold_n, label = lab, showsd = T, stratified = strat, early_stopping_rounds = early_n, maximize = F, print_n = 5)
-  return(xgb_cv)
-  # Example #
-  #param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.05, gamma = 0, max_depth = 5, min_child_weight = 1, subsample=0.8, colsample_bytree=0.8, num_class = 9)
-  #xgb_cv <- xgb.cv( params = param, data = train_matrix, nrounds = 10000, nfold = 3, label = num_target, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
-  
-}
 
 myxgb_tuning <- function(nrounds, eta, max_depth, min_child_weight, gamma, subsample, colsample_bytree){
   # Try tuning parameters
@@ -62,3 +53,44 @@ myxgb_tuning <- function(nrounds, eta, max_depth, min_child_weight, gamma, subsa
   #xgb_grid_1 = expand.grid(nrounds = 1073, eta = 0.05, max_depth = c(3,5,7,9,12), min_child_weight = c(1,3,5,7), gamma = 1, subsample = 0.8, colsample_bytree = 0.8)
   # Pass vectors as parameter !
 }
+
+xgb_bagged <- function(train, test, nbag, ncv){
+  xgbcolname <- c("xgb1", "xgb2", "xgb3", "xgb4", "xgb5", "xgb6", "xgb7", "xgb8", "xgb9")
+  tmp_list <- toxgbmatrix(train,test)
+  train_matrix <- tmp_list[['train_matrix']]
+  test_matrix <- tmp_list[['test_matrix']]
+  num_target <- tmp_list[['num_target']]
+  # Save some memory
+  rm(tmp_list)
+  param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.05, gamma = 1, max_depth = 12, min_child_weight = 3, subsample=0.8, colsample_bytree=0.8, num_class = 9)
+  
+  # Create list to store train_meta and test_meta for xgb
+  train_meta_list <- list()
+  test_meta_list <- list()
+  for(i in 1 : nbag){
+    xgb_cv <- xgb.cv( params = param, data = train_matrix, nrounds = 10000, nfold = ncv, label = num_target, prediction = TRUE, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
+    
+    # Train model 
+    xgb_model <- xgboost(param = param, data = train_matrix, label = num_target, nrounds = xgb_cv$best_iteration)
+    xgb_prediction <- matrix(predict(xgb_model, test_matrix), ncol = 9, byrow = T)
+    
+    train_meta_xgb <- xgb_cv$pred
+    test_meta_xgb <- xgb_prediction
+    
+    if(i == 1){
+      # Create new dataframe at first iteration
+      train_meta_bagged <- matrix(0, nrow = nrow(train_meta_xgb), ncol = ncol(train_meta_xgb))
+      test_meta_bagged <- matrix(0, nrow = nrow(test_meta_xgb), ncol = ncol(test_meta_xgb))
+    }
+    # Add results to bagging
+    train_meta_bagged <- train_meta_bagged + train_meta_xgb
+    test_meta_bagged <- test_meta_bagged + test_meta_xgb
+  }
+  
+  # Average the baggings
+    train_meta_bagged <- train_meta_bagged / nbag
+    test_meta_bagged <- test_meta_bagged / nbag
+    return(list(train_meta_bagged = train_meta_bagged, test_meta_bagged = test_meta_bagged))
+  
+}
+
