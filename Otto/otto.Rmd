@@ -17,8 +17,8 @@ library(xgboost)
 library(methods)
 library(data.table)
 library(magrittr)
-options( java.parameters = "-Xmx2g" )
-library(extraTrees)
+#options( java.parameters = "-Xmx2g" )
+#library(extraTrees)
 library(CORElearn)
 
 source("model_ada.R")
@@ -52,7 +52,7 @@ write.csv(rf_submission, file="random_forest_submission.csv", row.names = FALSE)
 
 
 ```{r}
-# Try train / calibrate percentages of 0.7 (0.49 log loss !)
+# Try train / calibrate percentages of 0.7 (0.49 log loss)
 rf_cali_70 <- rf_on_calibrate(train, 0.7, 800)
 class_cali_70 <- rf_prob_calibration(rf_cali_70[['subtrain']], rf_cali_70[['caliset']], rf_cali_70[['cali_answer']], rf_cali_70[['subtrain_rf']], 0.7, 800)
 
@@ -68,73 +68,96 @@ rf_calibrated_submission_70 <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Cl
 # This can be used as the meta feature for test !
 rf_calibrated_submission_70[,2:10] <- test_predict_70
 write.csv(rf_calibrated_submission_70, file="rf_calibrated_submission_70.csv", row.names = FALSE)
+
+###############################################################
+
+
+
+```
+
+```{r}
+# Try some ensembling techniques
+
+# Meta features for random forest
+for(rounds in 1 : 10){
+  rf_cali_bag_list <- rf_cali_cv_bagged(train, test, 1, 3)
+  save(rf_cali_bag_list, file = paste(paste("rf_cali_", toString(rounds), sep = ""), ".rData", sep = ""))
+  rm(rf_cali_bag_list)
+}
+
+rf_bag_list <- list()
+for(rounds in 1 : 10){
+  load(paste(paste("rf_cali_", toString(rounds), sep = ""), ".rData", sep = ""))
+  rf_bag_list[[rounds]] <- rf_cali_bag_list
+  if(rounds == 1){
+    train_meta_rf <- rf_bag_list[[1]][[1]]
+    test_meta_rf <- rf_bag_list[[1]][[2]]
+  }
+  else{
+    train_meta_rf <- train_meta_rf + rf_bag_list[[rounds]][[1]]
+    test_meta_rf <- test_meta_rf + rf_bag_list[[rounds]][[2]]
+  }
+}
+# Scale matrix
+train_meta_rf <- as.matrix(train_meta_rf) / rowSums(as.matrix(train_meta_rf))
+test_meta_rf <- test_meta_rf / rowSums(test_meta_rf)
+
+# Change to dataframe and add row, column names
+train_meta_rf <- as.data.frame(train_meta_rf)
+test_meta_rf <- as.data.frame(test_meta_rf)
+rfcolname <- c("rf1", "rf2", "rf3", "rf4", "rf5", "rf6", "rf7", "rf8", "rf9")
+colnames(train_meta_rf) <- rfcolname
+colnames(test_meta_rf) <- rfcolname
+rownames(train_meta_rf) <- c(1:nrow(train_meta_rf))
+rownames(test_meta_rf) <- c(1:nrow(test_meta_rf))
+
+
+# Meta features for xgboost
+#xgb_bag_list <- xgb_bagged(train, test, 10, 3)
+xgbcolname <- c("xgb1", "xgb2", "xgb3", "xgb4", "xgb5", "xgb6", "xgb7", "xgb8", "xgb9")
+# Scale matrix
+#xgb_bag_list[['train_meta_bagged']] <- xgb_bag_list[['train_meta_bagged']] / rowSums(xgb_bag_list[['train_meta_bagged']])
+#xgb_bag_list[['test_meta_bagged']] <- xgb_bag_list[['test_meta_bagged']] / rowSums(xgb_bag_list[['test_meta_bagged']])
+train_meta_xgb <- as.data.frame(xgb_bag_list[['train_meta_bagged']])
+test_meta_xgb <- as.data.frame(xgb_bag_list[['test_meta_bagged']])
+colnames(train_meta_xgb) <- xgbcolname
+colnames(test_meta_xgb) <- xgbcolname
+rownames(train_meta_xgb) <- c(1:nrow(train_meta_xgb))
+rownames(test_meta_xgb) <- c(1:nrow(test_meta_xgb))
+
+
+# Combine as metatrain
+metatrain <- cbind(train[,1:94], train_meta_xgb)
+metatrain <- cbind(metatrain, train_meta_rf)
+target <- train$target
+metatrain <- cbind(metatrain, target)
+metatest <- cbind(test, test_meta_xgb)
+metatest <- cbind(metatest, test_meta_rf)
+
+meta <- list(metatrain = metatrain, metatest = metatest)
+
+
+
+# Check if normalized
+#sum(metatrain[1,95:103])
+#sum(metatest[1,95:103])
+#sum(metatrain[1,104:112])
+#sum(metatest[1,104:112])
+
 ```
 
 
 
+
+
 ```{r}
-cali_cv_start_time <- Sys.time()
-
-# Cross-validate calibration
-folds <- createFolds(train$target, k = 3, list = FALSE)
-train$fold <- folds
-
-# Create empty dataframe to store meta feature for train
-train_meta <- data.frame()
-test_predict_combined <- matrix(0, nrow = 144368, ncol = 9)
-
-# K-fold cross-validation
-for(k in 1:3){
-  
-  # Seperate the training, calibration folds    
-  calibrate_i <- which(train$fold == k)
-  subtrain <- train[-calibrate_i, ]
-  caliset <- train[calibrate_i, ]
-  cali_answer <- train_answer[calibrate_i,]
-  
-  # Remember to remove folds when training !
-  # Train random forest on subtrain
-  subtrain_rf <- randomForest(subtrain[,c(-1,-95,-96)], as.factor(subtrain$target), ntree = 800, mtry = 20, nodesize = 1)
-  # Predict for calibrate set 
-  cali_predict <- predict(subtrain_rf, caliset[,c(-1,-95,-96)], type="prob")
-  # Predict for test set 
-  test_predict <- predict(subtrain_rf, test[,-1], type="prob")
-  
-  # Loop through each class
-  for(i in 1:9){
-    # Store predicted class probability and correct class
-    pred_is_class <- cali_predict[,i]
-    ans_is_class <- factor(cali_answer[,i + 1])
-    ans_is_class <- factor(ans_is_class,levels(ans_is_class)[c(2,1)])
-    
-    # Calibrate the probabilities for test set
-    calibration <- calibrate(ans_is_class, pred_is_class, class1 = 1, method = "isoReg", weight=NULL, noBins=10, assumeProbabilities=TRUE)
-    test_predict[,i] <- applyCalibration(test_predict[,i], calibration)
-    cali_predict[,i] <- applyCalibration(cali_predict[,i], calibration)
-  } 
-  
-  # Add prediction to test_predict_combined and train_meta
-  test_predict_combined <- test_predict_combined + test_predict
-  rbind(train_meta, cali_predict)
-  
-}
-
-# Get the average of three test_predictions (also meta feature for test)
-test_predict_combined <- test_predict_combined / 3
-
-# Generate submission
-rf_calibrated_submission_combined <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-rf_calibrated_submission_combined[,2:10] <- test_predict_combined
-write.csv(rf_calibrated_submission_combined, file="rf_calibrated_submission_combined", row.names = FALSE)
-
-
-# Order meta feature dataframe by row name
- train_meta[order(as.numeric(row.names(train_meta))),]
- 
-cali_cv_end_time <- Sys.time()
-cali_cv_exec_time <- cali_cv_end_time - cali_cv_start_time
-
-
+#rm(list=ls())
+#memory.size(max = FALSE)
+#object.size(as.data.frame(test))
+#memory.limit()
+#rownames(test)
+#Sys.getenv("R_ARCH")
+#.Machine$sizeof.pointer
 ```
 
 
@@ -228,46 +251,46 @@ write.csv(kknn_128_submission, file="kknn_128_submission.csv", row.names = FALSE
 # Code for cross-validation
 # TAKES MAJOR TIME ... IF I GET RICH AND BUY A WORKSTATION ...
 # Creating folds with caret
-folds <- createFolds(train$target, k = 10, list = FALSE)
-train$fold <- folds
+#folds <- createFolds(train$target, k = 10, list = FALSE)
+#train$fold <- folds
 
 # Create vector to store log-loss for each fold and execution time
-fold_log_loss <- c()
-fold_rf_exec_time <- c()
+#fold_log_loss <- c()
+#fold_rf_exec_time <- c()
 
 # K-fold cross-validation
-for(k in 1:10){
+#for(k in 1:10){
   
   # Measure execution time
-  start_time <- Sys.time()
+#  start_time <- Sys.time()
   
   # Seperate the training, testing folds    
-  test_i <- which(train$fold == k)
-  train_fold <- train[-test_i, ]
-  test_fold <- train[test_i, ]
-  ans_fold <- answer[test_i,]
-  train_fold$fold <- NULL
-  test_fold$fold <- NULL
+#  test_i <- which(train$fold == k)
+#  train_fold <- train[-test_i, ]
+#  test_fold <- train[test_i, ]
+#  ans_fold <- answer[test_i,]
+#  train_fold$fold <- NULL
+#  test_fold$fold <- NULL
   
   ### THIS IS THE PART WHERE YOU TRY DIFFERENT MODELS
   
   # Perform simple random forest on trainfold
-  prediction <- data.frame(id=test_fold$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-  rf_train <- randomForest(train_fold[,c(-1,-95)], as.factor(train_fold$target), ntree=200, importance=TRUE)
+#  prediction <- data.frame(id=test_fold$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+#  rf_train <- randomForest(train_fold[,c(-1,-95)], as.factor(train_fold$target), ntree=200, importance=TRUE)
   
   # Test simple random forest on testfold
-  prediction[,2:10] <- predict(rf_train, test_fold[,-1], type="prob")
+#  prediction[,2:10] <- predict(rf_train, test_fold[,-1], type="prob")
   
   # Evaluate log-loss
-  fold_log_loss[k] <- logloss(as.matrix(prediction[,-1]),as.matrix(ans_fold[,-1]))
+#  fold_log_loss[k] <- logloss(as.matrix(prediction[,-1]),as.matrix(ans_fold[,-1]))
   
-  end_time <- Sys.time()
-  fold_rf_exec_time[k] <- end_time - start_time
-}
+#  end_time <- Sys.time()
+#  fold_rf_exec_time[k] <- end_time - start_time
+#}
 
 
-fold_log_loss
-mean(fold_log_loss)
+#fold_log_loss
+#mean(fold_log_loss)
 
 ```
 
