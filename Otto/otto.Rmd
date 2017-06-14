@@ -166,58 +166,98 @@ save(meta, file="meta.RData")
 ```{r}
 # Ensemble
 
+load("meta.RData")
+metatrain <- meta[["metatrain"]]
+metatest <- meta[["metatest"]]
+metatrain[,113:121] <- NULL
+metatest[,113:121] <- NULL
+
+
 #TUNING THE TOP MODEL
 #1. Tune nrounds
-metatrain[,2:94] <- NULL
-metatest[,2:94] <- NULL
+
 metalist <- toxgbmatrix(metatrain, metatest)
-param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.1, gamma = 0, max_depth = 5, min_child_weight = 3, subsample=0.8, colsample_bytree=0.8, num_class = 9)
+param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.1, gamma = 0, max_depth = 4, min_child_weight = 6, subsample=0.8, colsample_bytree=0.8, num_class = 9)
 xgb_meta_cv <- xgb.cv( params = param, data = metalist[['train_matrix']], nrounds = 10000, nfold = 3, label = metalist[['num_target']], prediction = FALSE, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
 nrounds1 <- xgb_meta_cv$best_iteration
 
 #2.1 Tune max_depth and min_child_weight
 # XGBoost
-xgb_trcontrol_1 = trainControl(method = "cv", number = 3, verboseIter = TRUE, returnData = TRUE, returnResamp = "all", classProbs = TRUE, summaryFunction = mnLogLoss,
-                                 allowParallel = TRUE)
-# Best at max_depth = 5, min_child_weight = 1.17
-xgbgrid <- expand.grid(nrounds=nrounds1, eta = 0.1, gamma = 0, max_depth = 5, min_child_weight = c(1.15,1.17,1.19), subsample=0.8, colsample_bytree=0.8)
+xgb_trcontrol_1 = trainControl(method = "cv", number = 3, verboseIter = TRUE, returnData = TRUE, returnResamp = "all", classProbs = TRUE, summaryFunction = mnLogLoss, allowParallel = TRUE)
+# Best at max_depth = 4, min_child_weight = 5.6
+xgbgrid <- expand.grid(nrounds=nrounds1, eta = 0.1, gamma = 0, max_depth = 4, min_child_weight = c(5.3,5.4,5.5,5.6,5.7), subsample=0.8, colsample_bytree=0.8)
+tuning_top <- train(x = metalist[['train_matrix']], y = as.factor(metalist[['target']]), trControl = xgb_trcontrol_1, tuneGrid = xgbgrid, method = "xgbTree")
+max_d <- tuning_top$pred$max_depth[1]
+min_c <- tuning_top$pred$min_child_weight[1]
+tuning_top
 
-#2.1 Tune gamma (best at gamma = 0.83)
-xgbgrid <- expand.grid(nrounds=nrounds1, eta = 0.1, gamma = 0.83, max_depth = 5, min_child_weight = 1.17, subsample=0.8, colsample_bytree=0.8)
+#2.2 Tune gamma (best at gamma = 0.5)
+xgbgrid <- expand.grid(nrounds=nrounds1, eta = 0.1, gamma = c(0.2,0.3,0.4,0.5,0.6,0.7,0.8), max_depth = 4, min_child_weight = 5.6, subsample=0.8, colsample_bytree=0.8)
+tuning_top2 <- train(x = metalist[['train_matrix']], y = as.factor(metalist[['target']]), trControl = xgb_trcontrol_1, tuneGrid = xgbgrid, method = "xgbTree")
+gamma <- tuning_top2$pred$gamma[1]
 
-# Recalibrate number of boosting rounds
-param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.01, gamma = 0.83, max_depth = 5, min_child_weight = 1.17, subsample=0.9, colsample_bytree=0.86, num_class = 9)
-xgb_meta_cv2 <- xgb.cv( params = param, data = metalist[['train_matrix']], nrounds = 10000, nfold = 3, label = metalist[['num_target']], prediction = FALSE, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
+#2.3 Recalibrate number of boosting rounds
+param2 <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.1, gamma = 0.5, max_depth = 4, min_child_weight = 5.6, subsample=0.8, colsample_bytree=0.8, num_class = 9)
+xgb_meta_cv2 <- xgb.cv( params = param2, data = metalist[['train_matrix']], nrounds = 10000, nfold = 3, label = metalist[['num_target']], prediction = FALSE, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
 nrounds2 <- xgb_meta_cv2$best_iteration
 
 
-#2.1 Tune subsample and column sample by tree (subsample = 0.9, colsample_bytree = 0.86)
-xgbgrid <- expand.grid(nrounds=nrounds2, eta = 0.1, gamma = 0.83, max_depth = 5, min_child_weight = 1.17, subsample=0.9, colsample_bytree=0.86)
+#2.4 Tune subsample and column sample by tree (subsample = , colsample_bytree = )
+xgbgrid <- expand.grid(nrounds=118, eta = 0.1, gamma = 0.5, max_depth = 4, min_child_weight = 5.6, subsample = 0.8, colsample_bytree = 0.7)
+tuning_top3 <- train(x = metalist[['train_matrix']], y = as.factor(metalist[['target']]), trControl = xgb_trcontrol_1, tuneGrid = xgbgrid, method = "xgbTree")
+subsample <- tuning_top3$pred$subsample[1]
+colsample_bytree <- tuning_top3$pred$subsample[1]
 
-tuning_top <- train(x = metalist[['train_matrix']], y = as.factor(metalist[['target']]), trControl = xgb_trcontrol_1, tuneGrid = xgbgrid, method = "xgbTree")
-save(tuning_top, file="tuning_top.RData")
+xgbgrid <- expand.grid(nrounds=nrounds2, eta = 0.1, gamma = gamma, max_depth = max_d, min_child_weight = min_c, subsample=c(subsample - 0.05, subsample, subsample + 0.05), colsample_bytree=c(colsample_bytree - 0.05, colsample_bytree, colsample_bytree + 0.05))
+tuning_top4 <- train(x = metalist[['train_matrix']], y = as.factor(metalist[['target']]), trControl = xgb_trcontrol_1, tuneGrid = xgbgrid, method = "xgbTree")
+subsample <- tuning_top4$pred$subsample[1]
+colsample_bytree <- tuning_top4$pred$subsample[1]
 
 #3 Tune nrounds for smaller eta one last time
-xgb_meta_cv3 <- xgb.cv( params = param, data = metalist[['train_matrix']], nrounds = 10000, nfold = 3, label = metalist[['num_target']], prediction = FALSE, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
+param3 <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.01, gamma = 0.5, max_depth = 4, min_child_weight = 5.6, subsample=0.8, colsample_bytree=0.7, num_class = 9)
+xgb_meta_cv3 <- xgb.cv( params = param3, data = metalist[['train_matrix']], nrounds = 10000, nfold = 3, label = metalist[['num_target']], prediction = FALSE, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
+nrounds_final <- xgb_meta_cv3$best_iteration
+
 # Best parameters : nrounds = 1417, eta = 0.01, gamma = 0.83, max_depth = 5, min_child_weight = 1.17, subsample = 0.9, colsample_bytree = 0.86
 
 #4 Train on full data set
-xgboost_final_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
-param <- list(booster = "gbtree", objective = "multi:softprob", eval_metric = "mlogloss",  eta = 0.01, gamma = 0.83, max_depth = 5, min_child_weight = 1.17, subsample = 0.9, colsample_bytree = 0.86, num_class = 9)
-xgb_final <- xgboost(param = param, data = metalist[['train_matrix']], label = metalist[['num_target']], nrounds = 1417)
-xgboost_final_submission[,2:10] <- matrix(predict(xgb_final, metalist[['test_matrix']]), ncol = 9, byrow = T)
-xgb_final[['evaluation_log']]$train_mlogloss[1417]
+xgboost_final_submission_2 <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+xgb_final_2 <- xgboost(param = param3, data = metalist[['train_matrix']], label = metalist[['num_target']], nrounds = nrounds_final)
+xgboost_final_submission_2[,2:10] <- matrix(predict(xgb_final_2, metalist[['test_matrix']]), ncol = 9, byrow = T)
 
-write.csv(xgboost_final_submission, file="xgboost_final_submission.csv", row.names = FALSE)
-
-xgboost_final_submission
+write.csv(xgboost_final_submission_2, file="xgboost_final_submission_2.csv", row.names = FALSE)
 ```
 
 ```{r}
-metalist[['train_matrix']]
-metalist[['test_matrix']]
+xgb_meta_cv3 <- xgb.cv( params = param3, data = metalist[['train_matrix']], nrounds = 10000, nfold = 3, label = metalist[['num_target']], prediction = FALSE, showsd = T, stratified = T, early_stopping_rounds = 20, maximize = F, print_every_n = 5)
+nrounds_final <- xgb_meta_cv3$best_iteration
+
+# Best parameters : nrounds = 1417, eta = 0.01, gamma = 0.83, max_depth = 5, min_child_weight = 1.17, subsample = 0.9, colsample_bytree = 0.86
+
+#4 Train on full data set
+xgboost_final_submission_3 <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+xgb_final_3 <- xgboost(param = param3, data = metalist[['train_matrix']], label = metalist[['num_target']], nrounds = nrounds_final)
+xgboost_final_submission_3[,2:10] <- matrix(predict(xgb_final_3, metalist[['test_matrix']]), ncol = 9, byrow = T)
+
+write.csv(xgboost_final_submission_3, file="xgboost_final_submission_3.csv", row.names = FALSE)
 ```
 
+```{r}
+tmp <- matrix(0, nrow = 9, ncol = 144368)
+for(i in 1 : 10){
+  xgb_final_3 <- xgboost(param = param3, data = metalist[['train_matrix']], label = metalist[['num_target']], nrounds = nrounds_final)
+  if(i == 1){
+    tmp <- matrix(predict(xgb_final_3, metalist[['test_matrix']]), ncol = 9, byrow = T)
+  }
+  else{
+    tmp <- tmp + matrix(predict(xgb_final_3, metalist[['test_matrix']]), ncol = 9, byrow = T)
+  }
+}
+
+xgboost_final_submission_bagged <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+xgboost_final_submission_bagged[,2:10] <- tmp
+write.csv(xgboost_final_submission_bagged, file="xgboost_final_submission_bagged.csv", row.names = FALSE)
+```
 
 
 
@@ -292,19 +332,25 @@ reliabilityPlot(pred_is_class_1, ans_is_class_1, titleText="Class 1 reliability"
 #write.csv(extraTrees_submission, file="extraTrees_submission.csv", row.names = FALSE)
 #
 
+
 ```
 
 ```{r}
 # Simple knn classification (k = 128, distance = 2)
-kknn_128_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
+#kknn_128_submission <- data.frame(id=test$id, Class_1=NA, Class_2=NA, Class_3=NA, Class_4=NA, Class_5=NA, Class_6=NA, Class_7=NA, Class_8=NA, Class_9=NA)
 kknn.128 <- kknn(target ~ .-id, train, test, na.action = na.omit(), k = 128, distance = 2, kernel = "optimal")
-kknn_128_submission[,2:10] <- kknn.128$prob
-write.csv(kknn_128_submission, file="kknn_128_submission.csv", row.names = FALSE)
+kknn.128$prob
 
-test_meta_knn_128 <- read.csv("kknn_128_submission.csv")
+#kknn_128_submission[,2:10] <- kknn.128$prob
+#write.csv(kknn_128_submission, file="kknn_128_submission.csv", row.names = FALSE)
+
+
+knn_cv <- train.kknn(target ~ .-id, train, ks = c(2,4), kernel = "optimal", distance = 2)
+
+#test_meta_knn_128 <- read.csv("kknn_128_submission.csv")
 kknn_128_train <- kknn(target ~ .-id, train, train[,-95], na.action = na.omit(), k = 128, distance = 2, kernel = "optimal")
-train_meta_knn_128 <- kknn_128_train$prob
-
+#train_meta_knn_128 <- kknn_128_train$prob
+kknn_128_train$prob
 ```
 
 
