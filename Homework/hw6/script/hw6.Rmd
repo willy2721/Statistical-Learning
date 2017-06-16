@@ -1,0 +1,337 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/Homework/R/Class/data/hw6/cwsas_train_v2.rdata")
+```
+
+
+
+```{r}
+hmm_train <- function(sentvec, tagvec){
+  # Define variables
+  tseq_count <- matrix(0,4,4)
+  ct_count <- matrix(0,70000,4)
+  
+  # Split the tags
+  bmes_tag_split <- strsplit(tagvec, "")
+  text_int <- unname(sapply(sentvec,utf8ToInt))
+  
+  #  Method 1 : Map by the switch function
+  bmes_tag_int <- lapply(bmes_tag_split, function(x) unname(sapply(x, switch, "S" = 1, "B" = 2, "M" = 3, "E" = 4)))
+  
+  # Method 2 : Map by name
+  # Define mapping between S,B,M,E and 1,2,3,4
+  #orders=c(1,2,3,4)
+  #names(orders)=c("S", "B", "M", "E")
+  #bmes_tag_int <- lapply(bmes_tag_split,function(x) unname(orders[x]))
+  
+  # Get sequence count
+  vec_seq_count <- function(int_vec){
+    for(i in 1:length(int_vec - 1)){tseq_count[int_vec[i],int_vec[i + 1]] <<- tseq_count[int_vec[i],int_vec[i + 1]] + 1}  
+  }
+  lapply(bmes_tag_int, vec_seq_count)
+  
+  # Get count of each word label
+  for(i in 1 : length(bmes_tag_int)){
+    for(j in 1 : length(bmes_tag_int[[i]])){
+      row <- text_int[[i]][j]
+      col <- bmes_tag_int[[i]][j]
+      ct_count[row,col] <- ct_count[row,col] + 1
+    }
+  }
+  # Get count of each variable
+  tprior_count <- as.matrix(colSums(ct_count))
+  
+  
+  return(list(ct_count=ct_count,tseq_count=tseq_count,tprior_count=tprior_count))
+}
+
+```
+
+```{r}
+#model1=hmm_train(train_sent$text2, train_sent$bmes_tag)
+
+# INPUT : model, allsent, sepchar = " ", addsmooth = 1
+
+hmm_predict = function(model, allsent, sepchar = " ", addsmooth = 1){
+  # Represent each state
+  states <- c(1,2,3,4)
+  
+  # Define transition matrix and initial matrix and emission matrix
+  tran <- log((model$tseq_count + addsmooth) / sum(model$tseq_count + addsmooth))
+  init <- log((model$tprior_count + addsmooth) / sum((model$tprior_count + addsmooth)))
+  
+  # Create vector to store outsent and outtags
+  outsent_vec <- c()
+  outtag_vec <- c()
+  
+  for( n in 1 : length(allsent)){
+    emis <- model$ct_count[utf8ToInt(allsent[n]),]
+    emis <- log((emis + addsmooth) / sum((emis + addsmooth)))
+    seq <- unlist(lapply(allsent[n],utf8ToInt))
+    
+    if(length(emis) > 4){
+      # Define dataframes to store history of states and probabilities
+      prob_hist <- matrix()
+      state_hist <- matrix()
+      
+      # Calculate the probability of being in each state given the first word and initial matrix
+      prob_hist  <- t(matrix(unlist(lapply(states, function(x) {
+        init[x, 1] + emis[1, x]
+      }))))
+      state_hist <- t(matrix(states))
+      
+      # Viterbi algorithm 
+      for(i in 2:length(seq)){
+        tmp_list <- lapply(states, function(x) {
+          max_y <- unlist(lapply(states, function(y) {
+            prob_hist[i - 1, y] + tran[y, x]
+          }))
+          return(c(states[which(max_y == max(max_y))], max(max_y) + emis[i, x]))
+        })
+        prob_hist <- rbind(prob_hist, c(as.numeric(tmp_list[[1]][2]), as.numeric(tmp_list[[2]][2]), as.numeric(tmp_list[[3]][2]),as.numeric(tmp_list[[4]][2])))
+        state_hist <- rbind(state_hist, c(tmp_list[[1]][1],tmp_list[[2]][1],tmp_list[[3]][1],tmp_list[[4]][1]))
+      }
+      
+      # Find Viterbi path
+      vit_path <- c(which.max(prob_hist[length(seq),]))
+      for(i in length(seq):2){
+        vit_path <- c(vit_path,state_hist[i,vit_path[length(seq) - i + 1]])
+      }
+      vit_path <- rev(vit_path)
+      
+      # Cutting and pasting
+      str = c()
+      end = c()
+      for(j in 1:length(vit_path)){
+        if(vit_path[j] == 1){
+          str = c(str, j)
+          end = c(end, j)
+        }
+        else if(vit_path[j] == 2){
+          str = c(str, j)
+          if(j == length(vit_path)){
+            end = c(end, j)
+          }
+        }
+        else if(vit_path[j] == 4){
+          end = c(end, j)
+          if(j == 1){
+            str = c(str, j)
+          }
+        }
+        else{
+          if(j == length(vit_path)){
+            end = c(end, j)
+          }
+          if(j == 1){
+            str = c(str, j)
+          }
+        }
+      }
+      tag <- paste(sapply(vit_path, switch, "1" = "S", "2" = "B", "3" = "M", "4" = "E"), collapse = "")
+      sent <- paste(substring(allsent[n], str, end), collapse = sepchar)
+      outtag_vec <- c(outtag_vec,tag)
+      outsent_vec <- c(outsent_vec,sent)
+      
+    }
+    else if(length(emis) > 0){
+      outsent_vec <- allsent
+      outtag_vec <- c(outtag_vec,switch(which.max(emis+init), "1" = "S", "2" = "B", "3" = "M", "4" = "E"))  
+    }
+    else{
+      outsent_vec <- c(outsent_vec,"")
+      outtag_vec <- c(outtag_vec,"")
+    }
+  }
+  
+  return(list(outsent = outsent_vec, outtag = outtag_vec))
+}
+
+```
+
+
+```{r}
+# Bunch of tests
+out2=hmm_predict(model1, sample_sent2)
+out2
+out2_hsiao=hmm_predict2(model1, sample_sent2)
+out2_hsiao
+
+identical(out2,out2_hsiao)
+#out2=hmm_predict(model1, sample_sent2)
+#out2
+
+#out3=hmm_predict(model1, test_sent[851:900])
+#out3
+
+
+```
+
+```{r}
+hmm_predict2 = function(model, allsent, sepchar = " ", addsmooth = 1){
+    n = length(allsent)
+    ct_count = model$ct_count
+    name = c('S','B','M','E')
+    #prior
+    tprior_count = model$tprior_count
+    tprior_count = tprior_count + addsmooth
+    prior_init_table = log(tprior_count/sum(tprior_count))
+
+    tseq_count = model$tseq_count
+    tseq_count = tseq_count + addsmooth
+    f_table = log(tseq_count/sum(tseq_count))
+    Tags = c()
+    Sens = c()
+    for(i in 1:n){
+        temp = utf8ToInt(allsent[i])
+        count_table = ct_count[temp,]
+        count_table = count_table + addsmooth
+        sum = sum(count_table)
+        count_table = log(count_table/sum)
+        prior_table = prior_init_table
+        Phi_list = c()
+        if(length(count_table) > 4){
+            for(j in 1:(nrow(count_table)-1)){
+                temp = count_table[j,] + prior_table
+                temp = f_table + as.vector(temp)
+                prior_table = as.matrix(apply(temp, 2, max))
+                v = apply(temp, 2, which.max)
+                Phi_list = c(Phi_list, v)
+            }
+            Phi_table = t(matrix(Phi_list, nrow = 4))
+            temp = count_table[nrow(count_table),] + prior_table
+            last = which(temp %in% max(temp))
+            tag = c(last)
+            for(j in nrow(Phi_table):1){
+                last = Phi_table[j, last]
+                tag = c(tag,last)
+            }
+            tag = tag[length(tag):1]
+            str = c()
+            end = c()
+            for(j in 1:length(tag)){
+                if(tag[j] == 1){
+                    str = c(str, j)
+                    end = c(end, j)
+                }
+                else if(tag[j] == 2){
+                    str = c(str, j)
+                    if(j == length(tag)){
+                        end = c(end, j)
+                    }
+                }
+                else if(tag[j] == 4){
+                    end = c(end, j)
+                    if(j == 1){
+                        str = c(str, j)
+                    }
+                }
+                else{
+                    if(j == length(tag)){
+                        end = c(end, j)
+                    }
+                    if(j == 1){
+                        str = c(str, j)
+                    }
+                }
+            }
+            tag = name[tag]
+            Tags = c(Tags, paste(tag, collapse = ''))
+            temp = substring(allsent[i], str, end)
+            Sens = c(Sens, paste(temp, collapse = sepchar))
+        }
+        else if(length(count_table)>0){
+            temp = count_table + prior_table
+            last = which(temp %in% max(temp))
+            tag = c(last)
+            tag = name[tag]
+            Tags = c(Tags, tag)
+            Sens = c(Sens, allsent[i])
+        }
+        else{
+            temp = ""
+            Tags = c(Tags, temp)
+            Sens = c(Sens, temp)
+        }
+    }
+    return(list(outsent = Sens, outtag = Tags))
+}
+```
+
+
+
+
+
+```{r}
+for(i in 2:length(seq)){
+  tmp_list <- lapply(states, function(x) {
+      max_y <- unlist(lapply(states, function(y) {
+          prob_hist[i - 1, y] + tran[y, x]
+      }))
+      return(c(states[which(max_y == max(max_y))], max(max_y) + emis[seq[i], x]))
+  })
+
+  prob_hist <- rbind(prob_hist, c(as.numeric(tmp_list[[1]][2]), as.numeric(tmp_list[[2]][2]), as.numeric(tmp_list[[3]][2]),as.numeric(tmp_list[[4]][2])))
+ 
+  state_hist <- rbind(state_hist, c(tmp_list[[1]][1],tmp_list[[2]][1],tmp_list[[3]][1],tmp_list[[4]][1]))
+
+}
+# Find Viterbi path
+vit_path <- c(which.max(prob_hist[length(seq)]))
+for(i in length(seq):2){
+  vit_path <- c(vit_path,state_hist[i,vit_path[length(seq) - i + 1]])
+}
+vit_path <- rev(vit_path)
+outtag <- paste(sapply(vit_path, switch, "1" = "S", "2" = "B", "3" = "M", "4" = "E"), collapse = "")
+
+```
+```{r}
+str = c()
+end = c()
+for(j in 1:length(vit_path)){
+  if(vit_path[j] == 1){
+    str = c(str, j)
+    end = c(end, j)
+  }
+  else if(vit_path[j] == 2){
+    str = c(str, j)
+    if(j == length(vit_path)){
+      end = c(end, j)
+    }
+  }
+  else if(vit_path[j] == 4){
+    end = c(end, j)
+    if(j == 1){
+      str = c(str, j)
+    }
+  }
+  else{
+    if(j == length(vit_path)){
+      end = c(end, j)
+    }
+    if(j == 1){
+      str = c(str, j)
+    }
+  }
+}
+outsent <- paste(substring(sample_sent[10], str, end), collapse = " ")
+
+```
+
+
+```{r}
+a <- table(vit_path)
+nsep <- unname(a[names(a)==2] + a[names(a)==4])
+
+#strsplit(sample_sent[10],"")
+sample_sent[10]
+
+
+emis <- model$ct_count[utf8ToInt(sample_sent2[1]),drop = FALSE]
+length(emis)
+```
+

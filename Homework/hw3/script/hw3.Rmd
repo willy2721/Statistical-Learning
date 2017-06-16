@@ -1,0 +1,253 @@
+---
+title: "hw3"
+output: html_notebook
+---
+
+
+```{r}
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw3/phonetrain.rdata")
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw3/phonetest1.rdata")
+train2 = list()
+for(aclass in outclass) 
+  {train2[[aclass]] = traindata[[aclass]][1:500,]}
+```
+
+
+
+```{r}
+### Q1a ###
+pgm_train<-function(outclass, alldata){
+  ans <- list()
+  for(iter in 1:length(outclass)){
+    mu1 <- apply(train2[[iter]],2,mean)
+    sigma1 <- cov(train2[[iter]])
+    prec1 <- solve(sigma1)
+    detsig_log <- log(det(sigma1))
+    N1 <- nrow(train2[[iter]])
+    ans[[iter]] <- list(mu1=mu1, sigma1=sigma1, prec1=prec1, detsig_log=detsig_log, N1=N1)
+  }
+  names(ans) <- outclass
+  return(ans)
+}
+```
+
+
+```{r}
+model1=pgm_train(outclass, train2)
+model1[1]
+model1[[1]]
+```
+
+```{r}
+dmvnorm <- function (x, mean = rep(0, p), sigma = diag(p), log = FALSE)
+{
+    if (is.vector(x))
+	x <- matrix(x, ncol = length(x))
+    p <- ncol(x)
+    if(!missing(mean)) {
+	if(!is.null(dim(mean))) dim(mean) <- NULL
+	if (length(mean) != p)
+	    stop("mean and sigma have non-conforming size")
+    }
+    if(!missing(sigma)) {
+	if (p != ncol(sigma))
+	    stop("x and sigma have non-conforming size")
+	if (!isSymmetric(sigma, tol = sqrt(.Machine$double.eps),
+			 check.attributes = FALSE))
+	    stop("sigma must be a symmetric matrix")
+    }
+
+    ## <faster code contributed by Matteo Fasiolo mf364 at bath.ac.uk
+    dec <- tryCatch(chol(sigma), error=function(e)e)
+    if (inherits(dec, "error")) {
+        ## warning("cannot compute chol(sigma)"); return(NaN)
+        ## behave the same as dnorm(): return Inf or 0
+        x.is.mu <- colSums(t(x) != mean) == 0
+        logretval <- rep.int(-Inf, nrow(x))
+        logretval[x.is.mu] <- Inf # and all other f(.) == 0
+    } else {
+	tmp <- backsolve(dec, t(x) - mean, transpose = TRUE)
+	rss <- colSums(tmp ^ 2)
+	logretval <- - sum(log(diag(dec))) - 0.5 * p * log(2 * pi) - 0.5 * rss
+    }
+    names(logretval) <- rownames(x)
+    if(log) logretval else exp(logretval)
+}
+```
+
+```{r}
+### Q1b ###
+pgm_predict <- function(amodel,testdata){
+  if(ncol(testdata) != 3)
+    return(NULL)
+  
+  find_ans <- function(row){
+    min <- 0
+    ind <- 0
+    for(iter in 1:length(amodel)){
+      mu <- amodel[[iter]]$mu1
+      sigma <- amodel[[iter]]$sigma1
+      if(dmvnorm(row,mu,sigma) > min){
+       min <- dmvnorm(row,mu,sigma)
+       ind <- iter
+      }
+    }
+    return(ind)
+  }
+  
+  ans <- unname(apply(testdata,1,find_ans))
+  return(ans)
+}
+
+```
+
+```{r}
+pred1=pgm_predict(model1, testds1_feature)
+pred1[1:50]
+```
+
+```{r}
+### Q2a
+
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw3/o_cost_test.rdata")
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw3/o_cost_train.rdata")
+
+```
+```{r}
+#Sample 1
+dm_train_t <- as.numeric(ds4a_train[,1] == "pos")
+tall <- as.matrix(dm_train_t)
+xmat <- model.matrix(~f_past+g1+g2+g3+g4+g5+g6+g7+g8+g9+g10,data=ds4a_train[,-1])
+head(t)
+head(xmat)
+
+```
+
+```{r}
+logicreg_l2_train <- function(y, xmat, lambda_rate = 0.0005, param_tol = 10^(-5), granditertol = 2, outitermax = 50, inneritermax = 20, debuglevel = 0){
+  N <- length(dm_train_t)
+  M <- ncol(xmat)
+  t <- y
+  
+  # Initial lambda
+  init_lambda <- lambda_rate * N
+  old_lambda <- init_lambda
+  
+  # Initial w
+  init_w <- solve(init_lambda * diag(M) + t(xmat) %*% xmat) %*% t(xmat) %*% t
+  old_w <- init_w
+  
+  # Function to calculate y
+  t_to_y <- function(row,w){
+    return(1 / (1 + exp(-(t(w) %*% row)))) 
+  }
+  
+  # BEGINNING OF FOR LOOP
+  
+  for(i in 1:outitermax){
+    w_iter <- 0
+    for( j in 1:inneritermax){
+      # Increment number of inner loop iterations
+      w_iter <- w_iter + 1
+      # Calculate new y with w
+      y <- as.matrix(apply(xmat,1,t_to_y,w=old_w))
+      # Calculate R - REMEMBER TO UPDATE
+      x = c()
+      for(n in 1:N){
+        x[n] <- y[n]*(1-y[n])
+      }
+      R <- diag(x)
+      # Calculate Gradient
+      grad <- old_lambda * old_w + t(xmat)%*%(y-t)
+      # Calculate Hessian
+      hess <- t(xmat) %*% R %*% xmat + old_lambda * diag(M)
+      # Calculate new w
+      new_w <- as.vector(old_w - (solve(hess) %*% (old_lambda * old_w + t(xmat) %*% (y-t))))
+      # Calculate MAD
+      MAD <- 0
+      for(n in 1:length(old_w)){
+        MAD <- MAD + abs(old_w[n]-new_w[n])
+      }
+      MAD <- MAD / length(old_w)
+      # Update w
+      old_w <- new_w
+      # Break if MAD is less than threshhold
+      if(MAD < param_tol) break
+    }
+    for( k in 1:inneritermax){
+      # Calculate the latest R
+      y <- apply(xmat,1,t_to_y,w=new_w)
+      x = c()
+      for(n in 1:N){
+        x[n] <- y[n]*(1-y[n])
+      }
+      R <- diag(x)
+      # Calculate gamma
+      eigenvalue <- eigen((t(xmat)%*%R%*%xmat), FALSE, only.values = TRUE, EISPACK = FALSE)
+      gamma <- 0
+      for(i in 1:length(eigenvalue$values)){
+        gamma <- gamma + eigenvalue$values[i]/(old_lambda + eigenvalue$values[i])
+      }
+      
+      # Calculate new lambda
+      new_lambda <- as.numeric(gamma / (t(new_w) %*% new_w))
+      
+      # Break if MAD is less than threshhold
+      if(abs(old_lambda - new_lambda) < param_tol){
+        old_lambda <- new_lambda
+        break
+      }
+      old_lambda <- new_lambda
+    }
+    # Break condition
+    if(w_iter <= 2){
+      # Calculate w_sd
+      S_n <- solve(new_lambda * diag(M) + t(xmat) %*% R %*% xmat)
+      w_sd <- sqrt(diag(S_n))
+      # Set up answer
+      ans <- list(w = new_w, w_sd = w_sd, lambda = new_lambda, M = M, N = N)
+      return(ans)
+    } 
+  }
+}
+
+```
+
+```{r}
+model1 <- logicreg_l2_train(tall, xmat, debuglevel=0)
+```
+
+```{r}
+### Q2b
+t_to_y <- function(row,w){
+    return(1 / (1 + exp(-(t(w) %*% row)))) 
+}
+logicreg_l2_predict <- function(model1, xmattest1){
+  prob <- as.matrix(apply(xmattest1,1,t_to_y,w=model1$w))
+  class <- c()
+  for(i in 1:nrow(xmattest1)){
+    if(prob[i] > 0.5){
+      class[i] = 1
+    }
+    else
+      class[i] = 0
+  }
+  ans <- list(prob = prob, class=class)
+  return(ans)
+}
+
+logicpred1 <- logicreg_l2_predict(model1, xmattest1)
+head(logicpred1$class,n=25)
+head(logicpred1$prob,n=25)
+```
+
+
+
+
+
+
+
+
+
+
+

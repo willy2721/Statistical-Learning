@@ -1,0 +1,280 @@
+---
+title: "hw2"
+output: html_notebook
+---
+```{r}
+### Q1 ###
+lm_evmax <- function(y,xmat){
+  N <- nrow(xmat)
+  lambda <- 0.001 * N
+  xmatsqr <- t(xmat) %*% xmat
+  I <- diag(nrow(xmatsqr))
+  w <- (lambda * I + xmatsqr) %*% t(xmat) %*% y
+  e_zero <- y - xmat %*% w
+  beta_init <- as.numeric(N / (t(e_zero) %*% e_zero))
+  alpha_init <- as.numeric(lambda * beta_init)
+  alpha_old <- alpha_init
+  beta_old <- beta_init
+  
+  # Set initial dummy value for thresh
+  thresh <- 1
+  
+  while(thresh >= 10^(-5)){
+    A <- alpha_old * I + beta_old * xmatsqr
+    mN <- beta_old * solve(A) %*% t(xmat) %*% y
+    alpha <- alpha_old
+    beta <- beta_old
+    eigenvalues <- eigen(beta_old * xmatsqr, only.values = TRUE)
+    gamma <- sum(unlist(lapply(eigenvalues,function(x) x / (alpha_old + x))[1]))
+    alpha_new <- as.numeric(gamma / (t(mN) %*% mN))
+    e_one <- y - xmat %*% mN
+    beta_new <- as.numeric(1 / ((t(e_one) %*% e_one) / (N - gamma)))
+    thresh <- abs(alpha_old - alpha_new) + abs(beta_old - beta_new)  
+    alpha_old <- alpha_new
+    beta_old <- beta_new
+  }
+  mNsd <- sqrt(diag(solve(A)))
+  ret <- list(mN=mN,mNsd=mNsd,alpha=alpha,beta=beta)
+  return(ret)
+}
+
+```
+
+
+```{r}
+### TESTING ###
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb2_train.rdata")
+nfeat=seq(1, length(rtb2_train), by = 50)
+rtb3 = rtb2_train[1:10000,nfeat]
+y=as.matrix(rtb3[,1])
+xmat = model.matrix(paying_price~., data=rtb3)
+lmev1 = lm_evmax(y, xmat)
+lmev1
+
+```
+
+
+
+```{r}
+### Q2 ###
+gen_utagmat <- function(utagvec,y){
+
+# Create a tag vector containing the user_tags column split by commas
+utagvec <- strsplit(utagvec, ",")
+###print(utagvec)
+
+# Unlist the tag vector 
+vec<-unlist(utagvec)
+###print(vec)
+
+# Sort the tag vector by order 
+sortags <- sort(table(vec), decreasing=TRUE)
+###print(sortags)
+
+# Filter out the tags that occur less than 5 times
+filtags <- sortags[sortags >= 5]
+###print(str(filtags))
+###print(filtags)
+
+
+# Return a column containing 1's if no tags occus less than 5 times
+if(length(filtags) == 0){
+    return(as.matrix(rep(1,length(utagvec))))
+}
+
+### Computing t-value for each tag ###
+
+# Create a named vector with the same length as the tag vector and set all values to NA
+fillen <- length(filtags)
+filname <- names(filtags)
+alltags <- structure(rep(NA, fillen), names=filname)
+###print(filname[1])
+
+# Compute and store the t-stats for each tag
+for(iter in 1:fillen){
+  # Get feature name
+  feat <- filname[iter]
+  # Store the numerical value of whether the feature exists in the tag vector
+  pred <- sapply(utagvec, function(x) as.numeric(is.element(feat, unlist(x))))
+  # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
+  alltags[iter] <- summary(lm(y~pred))$coefficient["pred", "t value"]
+}
+
+# Filter out the tags with absolute value of t-stat less than 1, and order the vector
+seltags <- alltags[abs(alltags) >= 1]
+seltags <- sort(abs(seltags), decreasing = TRUE)
+sellen <- length(seltags)
+selname <- names(seltags)
+###print(seltags)
+
+# Create output matrix
+for(seliter in 1:sellen){
+  # Get feature name
+  selfeat <- selname[seliter]
+  # Store the numerical value of whether the feature exists in the tag vector
+  selpred <- sapply(utagvec, function(x) as.numeric(is.element(selfeat, unlist(x))))
+  # Combine the columns in to one dataframe 
+  if(seliter == 1){
+    opmatrix <- data.frame(selpred)
+  }
+  else{
+    opmatrix <- cbind(opmatrix,data.frame(selpred))  
+  }
+  
+}
+
+# Name the output matrix
+colnames(opmatrix) <- paste("user",selname, sep = "_")
+opmatrix <- as.matrix(cbind(constant=1,opmatrix))
+
+# Return the required the matrix
+return(opmatrix)
+}
+
+```
+
+
+
+```{r}
+###　Testing ###
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
+rtb1_train <- rtb1_train[1:300,]
+umat1 = gen_utagmat(rtb1_train$user_tags, rtb1_train$paying_price)
+head(umat1)
+y = rtb1_train$paying_price
+w = solve(t(umat1) %*% umat1, t(umat1) %*% y)
+print(w)
+
+
+```
+
+```{r}
+### Q3
+gen_uagentmat <- function(uagentvec, y){
+  
+  # Define regular expression pattern
+  pattern <- "([A-Za-z][A-Za-z0-9]{1,})"
+  
+  uagentvec <- sapply(uagentvec, function(x) regmatches(x, gregexpr(pattern, x)))
+  uagentvec <- lapply(uagentvec, unique)
+  ###print(head(uagentvec))
+  
+  # Unlist the vector
+  agentvec <- unlist(uagentvec)
+  ###print(head(agentvec))
+  
+  # Sort the agent vector by order 
+  soragent <- sort(table(agentvec), decreasing=TRUE)
+  ###print(soragent)
+  
+  # Select the agents that occur more than 10 times and less than or equal to floor(0.5N) times
+  filagent <- soragent[soragent >= 10]
+  filagent <- filagent[filagent <= floor(0.5 * length(uagentvec))] 
+  ###print(filagent)
+  
+  # Return a column containing 1's if no tags occus less than 5 times
+  if(length(filagent) == 0){
+    return(as.matrix(rep(1,length(uagentvec))))
+  }
+  
+  ### Computing t-value for each agent ###
+  
+  # Create a named vector with the same length as the agent vector and set all values to NA
+  agentlen <- length(filagent)
+  agentname <- names(filagent)
+  allagents <- structure(rep(NA, agentlen), names=agentname)
+  
+  # Compute and store the t-stats for each tag
+  for(iter in 1:agentlen){
+    # Get feature name
+    agentfeat <- agentname[iter]
+    
+    # Store the numerical value of whether the feature exists in the tag vector
+    agentpred <- sapply(uagentvec, function(agentlist) as.numeric(is.element(agentfeat, unlist(agentlist))))
+    # Store the t-statistic for each tag in "alltags", NOTE "~" for binary predictor!
+    # Check names(summary(lm(tar~pred))) to find the corresponding entry
+    allagents[iter] <- summary(lm(y~agentpred))$coefficient[length(summary(lm(y~agentpred))$coefficient[, "t value"]), "t value"]
+  }
+  
+  # Try sorting by reverse alphabetical order before filtering
+  order <- sort(names(allagents), decreasing = TRUE)
+  allagents <- allagents[order]
+  ###print(allagents)
+  
+  # Filter out the tags with absolute value of t-stat less than 1, and order the vector
+  selagents <- allagents[abs(allagents) >= 1]
+  selagents <- sort(abs(selagents), decreasing = TRUE)
+  selagentlen <- length(selagents)
+  ###print(selagents)
+  
+  # Return a column containing 1's if no agents have an absolute t value larger or equal to 1
+  if(selagentlen == 0){
+    return(as.matrix(rep(1,length(uagentvec))))
+  }
+  
+  # Try reordering members with the same t-value
+  #for(iter in 1:(selagentlen-1)){
+  #  if(selagents[iter] == selagents[iter + 1]){
+  #    tmp <- names(selagents)[iter]
+  #    names(selagents)[iter] <- names(selagents)[iter + 1]
+  #    names(selagents)[iter + 1] <- tmp
+  #    iter <- iter-1
+  #  }  
+  #}
+  ###print(selagents)
+  
+  selagentname <- names(selagents)
+  ###print(selagentname)
+  
+  # Create output matrix
+  for(seliter in 1:selagentlen){
+    # Get feature name
+    selagentfeat <- selagentname[seliter]
+    # Store the numerical value of whether the feature exists in the tag vector
+    selagentpred <- sapply(uagentvec, function(tag) as.numeric(is.element(selagentfeat, unlist(tag))))
+    # Combine the columns in to one dataframe 
+    if(seliter == 1){
+      agentmatrix <- data.frame(selagentpred)
+    }
+    else{
+    agentmatrix <- cbind(agentmatrix,data.frame(selagentpred))  
+    }
+  }
+  
+  # Name the output matrix
+  colnames(agentmatrix) <- paste("agent",selagentname, sep = "_")
+  agentmatrix <- as.matrix(cbind(constant=1,agentmatrix))
+  
+  return(agentmatrix)
+}
+
+```
+
+```{r}
+load("C:/Users/Willy/OneDrive/公用/台大/Senior courses/Second semester/Statistical Learning/R/Class/data/hw2/rtb1_train.rdata")
+rtb1_train = rtb1_train[1:1500,]
+y = rtb1_train$paying_price
+umat1 = gen_uagentmat(rtb1_train$user_agent,y)
+print(head(umat1))
+print(head(sort(colSums(umat1), decreasing=TRUE), n=10))
+
+```
+
+```{r}
+#remove linearly independent columns
+qr1 = qr(umat1, tol =1e-7)
+ind3 = qr1$pivot[1:qr1$rank]
+rank0 = ncol(umat1)
+if(qr1$rank < rank0) {
+  cat("There are", rank0, "columns, but rank is only", qr1$rank,"\n")
+  toremove = qr1$pivot[(qr1$rank+1):rank0]
+  cat("list of features removed", toremove,"\n")
+  tokeep = qr1$pivot[1:qr1$rank]
+  umat1 = umat1[,tokeep]
+}
+w = solve(t(umat1) %*% umat1, t(umat1) %*% y)
+print(w)
+```
+
+
+
